@@ -1,0 +1,23 @@
+# Local conda environment
+.conda/
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Data and training outputs (large files)
+data/
+runs/
+*.pt
+*.pth
+*.onnx
+
+# Secrets
+.env
+
+# OS / IDE
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
