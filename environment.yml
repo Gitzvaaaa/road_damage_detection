@@ -16,5 +16,8 @@ dependencies:
   - jupyterlab
   - ipykernel
   - pip
+  - pip:
+      - torch
+      - torchvision
 
    
