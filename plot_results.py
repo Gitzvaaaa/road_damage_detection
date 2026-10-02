@@ -23,13 +23,21 @@ def plot_history(run_dir):
         return
 
     epochs = [int(row["epoch"]) for row in rows]
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    has_lr = "learning_rate" in rows[0]
+    fig, axes = plt.subplots(1, 3 if has_lr else 2, figsize=(15 if has_lr else 10, 4))
     axes[0].plot(epochs, [float(row["train_loss"]) for row in rows], label="Train (augmented)")
     axes[0].plot(epochs, [float(row["val_loss"]) for row in rows], label="Validation")
     axes[0].set(title="Loss", xlabel="Epoch", ylabel="Cross-entropy")
     axes[1].plot(epochs, [float(row["train_acc"]) * 100 for row in rows], label="Train (augmented)")
     axes[1].plot(epochs, [float(row["val_acc"]) * 100 for row in rows], label="Validation")
+    if "val_macro_f1" in rows[0]:
+        axes[1].plot(epochs, [float(row["val_macro_f1"]) * 100 for row in rows],
+                     label="Validation macro-F1", linestyle="--")
     axes[1].set(title="Accuracy", xlabel="Epoch", ylabel="Accuracy (%)")
+    if has_lr:
+        axes[2].step(epochs, [float(row["learning_rate"]) for row in rows],
+                     where="post", label="Learning rate")
+        axes[2].set(title="Learning rate", xlabel="Epoch", ylabel="LR", yscale="log")
     for axis in axes:
         axis.legend()
         axis.grid(alpha=0.3)

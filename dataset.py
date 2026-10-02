@@ -17,8 +17,8 @@ def load_normalization():
         return json.load(file)
 
 
-def make_dataset(split, augment=False):
-    stats = load_normalization()
+def make_dataset(split, augment=False, normalization=None):
+    stats = normalization if normalization is not None else load_normalization()
     steps = []
     if augment:
         steps.append(transforms.RandomHorizontalFlip())

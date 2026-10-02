@@ -1,7 +1,19 @@
 {
   "model": "complex_cnn",
-  "epochs": 10,
+  "epochs": 40,
   "batch_size": 32,
   "learning_rate": 0.001,
-  "seed": 42
+  "weight_decay": 0.0001,
+  "seed": 42,
+  "checkpoint_monitor": "val_acc",
+  "evaluate_test": false,
+  "lr_scheduler": {
+    "factor": 0.5,
+    "patience": 3,
+    "min_lr": 0.000001
+  },
+  "early_stopping": {
+    "patience": 10,
+    "min_delta": 0.0001
+  }
 }
