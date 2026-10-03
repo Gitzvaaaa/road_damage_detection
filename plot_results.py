@@ -1,4 +1,4 @@
-"""Vẽ đường học và confusion matrix từ các file CSV của một run."""
+"""Vẽ loss/accuracy; hỗ trợ vẽ lại confusion matrix từ CSV của run cũ."""
 
 import csv
 import os
@@ -23,21 +23,13 @@ def plot_history(run_dir):
         return
 
     epochs = [int(row["epoch"]) for row in rows]
-    has_lr = "learning_rate" in rows[0]
-    fig, axes = plt.subplots(1, 3 if has_lr else 2, figsize=(15 if has_lr else 10, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     axes[0].plot(epochs, [float(row["train_loss"]) for row in rows], label="Train (augmented)")
     axes[0].plot(epochs, [float(row["val_loss"]) for row in rows], label="Validation")
     axes[0].set(title="Loss", xlabel="Epoch", ylabel="Cross-entropy")
     axes[1].plot(epochs, [float(row["train_acc"]) * 100 for row in rows], label="Train (augmented)")
     axes[1].plot(epochs, [float(row["val_acc"]) * 100 for row in rows], label="Validation")
-    if "val_macro_f1" in rows[0]:
-        axes[1].plot(epochs, [float(row["val_macro_f1"]) * 100 for row in rows],
-                     label="Validation macro-F1", linestyle="--")
     axes[1].set(title="Accuracy", xlabel="Epoch", ylabel="Accuracy (%)")
-    if has_lr:
-        axes[2].step(epochs, [float(row["learning_rate"]) for row in rows],
-                     where="post", label="Learning rate")
-        axes[2].set(title="Learning rate", xlabel="Epoch", ylabel="LR", yscale="log")
     for axis in axes:
         axis.legend()
         axis.grid(alpha=0.3)
@@ -46,11 +38,12 @@ def plot_history(run_dir):
     plt.close(fig)
 
 
-def plot_confusion(run_dir):
-    with (run_dir / "confusion_matrix.csv").open(newline="", encoding="utf-8") as file:
-        rows = list(csv.reader(file))
-    classes = rows[0][1:]
-    matrix = [[int(value) for value in row[1:]] for row in rows[1:]]
+def plot_confusion(run_dir, matrix=None, classes=None):
+    if matrix is None:
+        with (run_dir / "confusion_matrix.csv").open(newline="", encoding="utf-8") as file:
+            rows = list(csv.reader(file))
+        classes = rows[0][1:]
+        matrix = [[int(value) for value in row[1:]] for row in rows[1:]]
 
     fig, ax = plt.subplots(figsize=(6, 5))
     image = ax.imshow(matrix, cmap="Blues")
@@ -69,16 +62,9 @@ def plot_confusion(run_dir):
 
 
 def main():
-    if len(sys.argv) > 1:
-        run_dir = Path(sys.argv[1]).resolve()
-    else:
-        runs = sorted(
-            path for path in (ROOT / "runs/simple_cnn").glob("run_*")
-            if (path / "history.csv").is_file()
-        )
-        if not runs:
-            raise FileNotFoundError("Chưa có run simple_cnn nào chứa history.csv.")
-        run_dir = runs[-1]
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python plot_results.py <run_dir>")
+    run_dir = Path(sys.argv[1]).resolve()
     if (run_dir / "history.csv").is_file():
         plot_history(run_dir)
     if (run_dir / "confusion_matrix.csv").is_file():
