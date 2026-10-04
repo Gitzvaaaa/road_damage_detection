@@ -134,6 +134,53 @@ Việc cần làm tiếp với Complex CNN:
 
 `runs/`, `data/`, `.conda/` và checkpoint bị Git bỏ qua: cần sao lưu/chia sẻ riêng.
 
+## Transfer learning: ResNet18
+
+Trên máy hiện tại, chạy bằng môi trường cục bộ như các lệnh ở đầu README:
+
+```powershell
+.\.conda\Scripts\python.exe train.py transfer_model
+```
+
+`models/transfer_model.py` nạp ResNet18 pretrained trên ImageNet và thay `fc`
+bằng `Linear(512, 4)`. `train_transfer.py` thực hiện hai giai đoạn:
+
+1. Train riêng `fc` trong 5 epoch, learning rate `0.001`.
+2. Nạp checkpoint tốt nhất của bước 1, mở `layer4` và train tiếp 20 epoch.
+   Learning rate của `layer4` là `0.00001`, của `fc` là `0.0001`.
+
+Các tham số nằm trong `configs/transfer_model.json`. Đặt `finetune_epochs` bằng 0
+nếu chỉ muốn train `fc`. Batch size là 32; dùng Adam và weight decay `0.0001`.
+Đặt `head_epochs` ít nhất là 1. Code dùng FP32 và learning rate cố định trong mỗi
+giai đoạn, không dùng AMP, scheduler hay early stopping cho nhánh transfer.
+Optimizer được tạo lại khi chuyển giai đoạn.
+BatchNorm ở phần đóng băng giữ chế độ eval; chỉ BatchNorm của `layer4` được cập nhật
+khi fine-tune.
+
+Dùng nguyên crop 224 x 224 và các tập train/val/test hiện có. Train chỉ lật ngang
+ngẫu nhiên. Nhánh transfer dùng mean/std ImageNet, được lưu trong summary;
+không thay `normalization.json` của dữ liệu hay preprocessing của hai CNN.
+Đây là lựa chọn giữ toàn bộ crop hư hỏng, không áp dụng center crop của preset ImageNet.
+
+Mỗi run lưu đúng 4 file trong `runs/transfer_model/run_###/`:
+`best_model.pth`, `summary.json`, `history.csv`, `training_curves.png`.
+Chọn checkpoint theo validation macro-F1 cao nhất, bằng nhau thì lấy loss thấp hơn.
+Nếu fine-tune không tốt hơn, giữ checkpoint của bước train `fc`.
+Summary ghi kết quả của checkpoint tốt nhất; history ghi giai đoạn, loss,
+accuracy và validation macro-F1 từng epoch.
+
+Sau khi chốt model, đánh giá test bằng lệnh dưới (thay bằng run thực tế):
+
+```powershell
+.\.conda\Scripts\python.exe evaluate.py runs/transfer_model/run_001
+```
+
+Lệnh này thêm `classification_report.csv`, `confusion_matrix.png` và cập nhật
+summary, tổng cộng 6 file. Evaluate dùng normalization đã lưu và không tải lại
+pretrained weights. Lần train đầu cần mạng để tải weights ImageNet khoảng 45 MB
+nếu chưa có trong cache PyTorch. Chưa có kết quả thí nghiệm transfer learning
+cho đến khi chạy huấn luyện trên dữ liệu thật.
+
 ## Kiểm thử
 
 ```powershell
@@ -141,5 +188,5 @@ Việc cần làm tiếp với Complex CNN:
 ```
 
 Kiểm thử gradient, nạp trọng số, chọn checkpoint, scheduler, early stopping và
-train/evaluate trên ảnh tổng hợp cho cả Simple CNN và Complex CNN. Dữ liệu thử nằm
+train/evaluate trên ảnh tổng hợp cho Simple CNN và Complex CNN. Dữ liệu thử nằm
 trong thư mục tạm, không thay đổi dữ liệu và kết quả thí nghiệm thật.

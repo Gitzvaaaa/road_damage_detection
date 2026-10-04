@@ -83,6 +83,10 @@ def main():
                         choices=["simple_cnn", "complex_cnn", "transfer_model"])
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
     args = parser.parse_args()
+    if args.model == "transfer_model":
+        from train_transfer import main as train_transfer
+        train_transfer(device=args.device)
+        return
     config = json.loads((ROOT / "configs" / f"{args.model}.json").read_text(encoding="utf-8"))
     if config["epochs"] < 1 or config["batch_size"] < 1:
         raise ValueError("epochs và batch_size phải >= 1.")
