@@ -143,7 +143,11 @@ Trên máy hiện tại, chạy bằng môi trường cục bộ như các lện
 ```
 
 `models/transfer_model.py` nạp ResNet18 pretrained trên ImageNet và thay `fc`
-bằng `Linear(512, 4)`. `train_transfer.py` thực hiện hai giai đoạn:
+bằng `Linear(512, 4)`.
+
+Code đi theo một vòng lặp epoch: train, validation, chọn checkpoint. Hai phần
+train và validation được viết riêng, không dùng hàm nhiều chế độ.
+Hai giai đoạn huấn luyện:
 
 1. Train riêng `fc` trong 5 epoch, learning rate `0.001`.
 2. Nạp checkpoint tốt nhất của bước 1, mở `layer4` và train tiếp 20 epoch.
@@ -167,7 +171,8 @@ Mỗi run lưu đúng 4 file trong `runs/transfer_model/run_###/`:
 Chọn checkpoint theo validation macro-F1 cao nhất, bằng nhau thì lấy loss thấp hơn.
 Nếu fine-tune không tốt hơn, giữ checkpoint của bước train `fc`.
 Summary ghi kết quả của checkpoint tốt nhất; history ghi giai đoạn, loss,
-accuracy và validation macro-F1 từng epoch.
+accuracy và validation macro-F1 từng epoch. Hai file này được ghi khi train xong;
+checkpoint được lưu ngay khi validation cải thiện.
 
 Sau khi chốt model, đánh giá test bằng lệnh dưới (thay bằng run thực tế):
 

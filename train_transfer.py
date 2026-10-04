@@ -1,4 +1,4 @@
-"""Train fc trước, sau đó fine-tune layer4 của ResNet18."""
+"""Train ResNet18 cho 4 loại hư hỏng mặt đường."""
 
 import csv
 import json
@@ -20,51 +20,31 @@ from train import next_run_dir
 ROOT = Path(__file__).resolve().parent
 
 
-def run_epoch(model, loader, loss_fn, device, optimizer=None, fine_tune=False):
-    # Giữ BatchNorm của các block đóng băng ở chế độ eval.
-    model.eval()
-    if optimizer is not None:
-        model.fc.train()
-        if fine_tune:
-            model.layer4.train()
-
-    total_loss = 0.0
-    actual, predicted = [], []
-    for images, labels in loader:
-        images, labels = images.to(device), labels.to(device)
-        with torch.set_grad_enabled(optimizer is not None):
-            outputs = model(images)
-            loss = loss_fn(outputs, labels)
-            if optimizer is not None:
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-        total_loss += loss.item() * labels.size(0)
-        actual.extend(labels.cpu().tolist())
-        predicted.extend(outputs.argmax(dim=1).detach().cpu().tolist())
-
-    accuracy = float(np.mean(np.array(actual) == np.array(predicted)))
-    f1 = f1_score(actual, predicted, labels=list(range(model.fc.out_features)),
-                  average="macro", zero_division=0)
-    return total_loss / len(loader.dataset), accuracy, float(f1)
-
-
 def main(device=None):
-    config = json.loads((ROOT / "configs/transfer_model.json").read_text(encoding="utf-8"))
+    # 1. Đọc cấu hình
+    with open(ROOT / "configs/transfer_model.json", encoding="utf-8") as file:
+        config = json.load(file)
+
     random.seed(config["seed"])
     np.random.seed(config["seed"])
     torch.manual_seed(config["seed"])
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    head_epochs = config["head_epochs"]
+    epochs = head_epochs + config["finetune_epochs"]
 
+    # 2. Đọc dữ liệu và chia thành từng batch
     train_data = make_dataset("train", augment=True, normalization=NORMALIZATION)
     val_data = make_dataset("val", normalization=NORMALIZATION)
-    if train_data.classes != val_data.classes:
-        raise ValueError("Các lớp trong train và val không khớp.")
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
     val_loader = DataLoader(val_data, batch_size=config["batch_size"])
 
+    # 3. Tạo ResNet18, ban đầu chỉ train fc
     model = build_model(len(train_data.classes), pretrained=True).to(device)
     loss_fn = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.fc.parameters(), lr=config["learning_rate"],
+                                 weight_decay=config["weight_decay"])
+
     run_dir = next_run_dir("transfer_model")
     run_dir.mkdir(parents=True)
     summary = {
@@ -73,52 +53,100 @@ def main(device=None):
         "split_sizes": {"train": len(train_data), "val": len(val_data)},
         "checkpoint_monitor": "val_macro_f1",
     }
-    best_f1, best_loss = -1.0, float("inf")
-    epoch = 0
-    print(f"Device: {device} | Run: {run_dir}", flush=True)
+    history = []
+    best_f1 = -1.0
+    best_loss = float("inf")
+    stage = "head"
+    print("Thiết bị huấn luyện:", device)
+    print("Bắt đầu huấn luyện lớp fc.")
 
-    with (run_dir / "history.csv").open("w", newline="", encoding="utf-8") as file:
+    for epoch in range(1, epochs + 1):
+        # Kết thúc train fc, nạp model tốt nhất và mở layer4 để học tiếp
+        if epoch == head_epochs + 1:
+            model.load_state_dict(torch.load(run_dir / "best_model.pth",
+                                            map_location=device, weights_only=True))
+            for param in model.layer4.parameters():
+                param.requires_grad = True
+            optimizer = torch.optim.Adam([
+                {"params": model.fc.parameters(), "lr": config["finetune_lr"]},
+                {"params": model.layer4.parameters(), "lr": config["backbone_lr"]},
+            ], weight_decay=config["weight_decay"])
+            stage = "finetune"
+            print("Bắt đầu fine-tune layer4 và fc.")
+
+        # 4. Train: giữ BatchNorm của các block đóng băng ở chế độ eval
+        model.eval()
+        model.fc.train()
+        if epoch > head_epochs:
+            model.layer4.train()
+        train_loss = 0.0
+        train_correct = 0
+
+        for images, labels in train_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = loss_fn(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item() * labels.size(0)
+            predicted = outputs.argmax(dim=1)
+            train_correct += (predicted == labels).sum().item()
+
+        train_loss = train_loss / len(train_data)
+        train_acc = train_correct / len(train_data)
+
+        # 5. Validation: chỉ dự đoán, không cập nhật trọng số
+        model.eval()
+        val_loss = 0.0
+        val_correct = 0
+        y_true, y_pred = [], []
+
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = model(images)
+                loss = loss_fn(outputs, labels)
+
+                val_loss += loss.item() * labels.size(0)
+                predicted = outputs.argmax(dim=1)
+                val_correct += (predicted == labels).sum().item()
+                y_true.extend(labels.cpu().tolist())
+                y_pred.extend(predicted.cpu().tolist())
+
+        val_loss = val_loss / len(val_data)
+        val_acc = val_correct / len(val_data)
+        val_f1 = f1_score(y_true, y_pred, labels=list(range(len(train_data.classes))),
+                          average="macro", zero_division=0)
+        history.append([epoch, stage, train_loss, train_acc, val_loss, val_acc, val_f1])
+        print("Epoch", epoch, "trong", epochs)
+        print("Độ chính xác trên tập train:", train_acc)
+        print("Độ chính xác trên tập validation:", val_acc)
+        print("Macro F1 trên tập validation:", val_f1)
+
+        # 6. Giữ checkpoint có F1 cao nhất; F1 bằng nhau thì chọn loss thấp hơn
+        if val_f1 > best_f1 or (val_f1 == best_f1 and val_loss < best_loss):
+            best_f1 = val_f1
+            best_loss = val_loss
+            torch.save(model.state_dict(), run_dir / "best_model.pth")
+            summary.update(best_epoch=epoch, best_stage=stage, best_val_loss=val_loss,
+                           best_val_acc=val_acc, best_val_macro_f1=float(val_f1))
+
+    # 7. Lưu kết quả và vẽ đường học
+    with open(run_dir / "history.csv", "w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(["epoch", "stage", "train_loss", "train_acc",
                          "val_loss", "val_acc", "val_macro_f1"])
-        for stage, epochs in (("head", config["head_epochs"]),
-                              ("finetune", config["finetune_epochs"])):
-            if epochs == 0:
-                continue
-            fine_tune = stage == "finetune"
-            if fine_tune:
-                model.load_state_dict(torch.load(run_dir / "best_model.pth",
-                                                map_location=device, weights_only=True))
-                for param in model.layer4.parameters():
-                    param.requires_grad = True
-                params = [
-                    {"params": model.fc.parameters(), "lr": config["finetune_lr"]},
-                    {"params": model.layer4.parameters(), "lr": config["backbone_lr"]},
-                ]
-            else:
-                params = [{"params": model.fc.parameters(), "lr": config["learning_rate"]}]
-            optimizer = torch.optim.Adam(params, weight_decay=config["weight_decay"])
-
-            for step in range(1, epochs + 1):
-                epoch += 1
-                train_loss, train_acc, _ = run_epoch(
-                    model, train_loader, loss_fn, device, optimizer, fine_tune)
-                val_loss, val_acc, val_f1 = run_epoch(model, val_loader, loss_fn, device)
-                writer.writerow([epoch, stage, train_loss, train_acc, val_loss, val_acc, val_f1])
-                file.flush()
-                print(f"{stage} {step}/{epochs} | Train acc: {train_acc:.2%} | "
-                      f"Val acc: {val_acc:.2%} | Val F1: {val_f1:.2%}", flush=True)
-
-                if val_f1 > best_f1 or (val_f1 == best_f1 and val_loss < best_loss):
-                    best_f1, best_loss = val_f1, val_loss
-                    torch.save(model.state_dict(), run_dir / "best_model.pth")
-                    summary.update(best_epoch=epoch, best_stage=stage, best_val_loss=val_loss,
-                                   best_val_acc=val_acc, best_val_macro_f1=val_f1)
-
-    summary.update(completed_epochs=epoch, status="trained")
-    (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        writer.writerows(history)
+    summary.update(completed_epochs=epochs, status="trained")
+    with open(run_dir / "summary.json", "w", encoding="utf-8") as file:
+        json.dump(summary, file, indent=2)
     plot_history(run_dir)
-    print(f"Saved: {run_dir} | Best epoch: {summary['best_epoch']}")
+    print("Huấn luyện xong. Model tốt nhất ở epoch", summary["best_epoch"])
+    print("Kết quả được lưu tại:", run_dir)
 
 
 if __name__ == "__main__":

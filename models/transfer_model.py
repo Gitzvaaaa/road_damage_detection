@@ -11,10 +11,11 @@ NORMALIZATION = {
 
 
 def build_model(num_classes, pretrained=False):
-    # Evaluate nạp checkpoint của mình, không cần tải lại ImageNet.
-    weights = ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
-    model = resnet18(weights=weights)
+    if pretrained:
+        model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+    else:
+        model = resnet18(weights=None)
     for param in model.parameters():
         param.requires_grad = False
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    model.fc = nn.Linear(512, num_classes)
     return model
