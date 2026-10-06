@@ -17,10 +17,15 @@ def load_normalization():
         return json.load(file)
 
 
-def make_dataset(split, augment=False):
-    stats = load_normalization()
+def make_dataset(split, augment=False, normalization=None, image_size=None):
+    stats = normalization or load_normalization()
     steps = []
+    if image_size is not None:
+        steps.append(transforms.Resize((image_size, image_size)))
     if augment:
+        if image_size is not None:
+            steps.append(transforms.RandomAffine(degrees=15, translate=(0.1, 0.1)))
+            steps.append(transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1))
         steps.append(transforms.RandomHorizontalFlip())
     steps += [
         transforms.ToTensor(),
