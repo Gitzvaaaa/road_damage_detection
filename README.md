@@ -1,121 +1,145 @@
 # Road damage classification
 
-Dự án dùng chung dữ liệu Japan cho ba hướng mô hình: simple CNN, complex CNN và transfer learning. Hiện `simple_cnn` và `transfer_model` đã hoạt động; `complex_cnn` là chỗ trống để xây dựng sau.
+Phân loại ảnh hư hỏng mặt đường Japan thành bốn lớp: `D00`, `D10`, `D20`, `D40`.
+Kiến trúc nằm trong `models/`, tham số huấn luyện nằm trong `configs/`.
 
-## Cấu trúc
+## Môi trường và dữ liệu
 
-```text
-road_damage/
-├── data/train/Japan/
-│   ├── processed_raw/clean/
-│   └── processed_classification/
-│       ├── train/  val/  test/
-│       ├── normalization.json
-│       └── class_to_idx.json
-├── models/                # Định nghĩa từng kiến trúc
-├── configs/               # Epoch, batch size, learning rate, seed
-├── dataset.py             # Nạp ảnh và chuẩn hóa
-├── prepare_classification.py
-├── train.py
-├── evaluate.py
-├── plot_results.py
-└── runs/<model>/run_001/, run_002/, ...
-```
-
-`data_processing.ipynb` là notebook tạo crop gốc. Thư mục `data/` và `runs/` không được đưa vào Git vì chứa ảnh và checkpoint lớn.
-
-## Chuẩn bị dữ liệu
-
-Dữ liệu đã được chuẩn bị tại `data/train/Japan/processed_classification/`. Chỉ chạy lại lệnh sau khi muốn tạo lại train/val/test từ `processed_raw/clean`; script sẽ thay thế thư mục dữ liệu đã xử lý:
+Chạy các lệnh từ thư mục gốc dự án. Trên máy hiện tại, môi trường có đủ thư viện là
+`.conda/Scripts/python.exe` (môi trường venv, không phải conda prefix):
 
 ```powershell
-& .\.conda\python.exe .\prepare_classification.py
+.\.conda\Scripts\python.exe train.py --help
 ```
 
-Các crop từ cùng một ảnh gốc ở cùng một tập. Tỷ lệ chia theo ảnh gốc là 70/15/15. Mean/std trong `normalization.json` chỉ tính từ train.
+Trên máy khác, tạo môi trường bằng `conda env create -f environment.yml`, sau đó
+`conda activate road_damage_env` và dùng `python` thay cho đường dẫn trên.
+
+Dữ liệu đã xử lý ở `data/train/Japan/processed_classification/`, gồm các thư mục
+`train/`, `val/`, `test/` và `normalization.json`. Dữ liệu hiện có gồm 7.657 ảnh
+train, 1.711 ảnh validation và 1.668 ảnh test. Các crop cùng ảnh gốc nằm trong cùng
+một tập; mean/std được tính từ train.
+
+`data_processing.ipynb` tạo crop; `prepare_classification.py` chia tập và chuẩn hóa.
+Không cần chạy lại các bước này để dùng checkpoint đã có. Chạy lại
+`prepare_classification.py` sẽ thay thế thư mục dữ liệu phân loại.
+
+## Các file chính
+
+| File | Công việc |
+|---|---|
+| `models/complex_cnn.py` | 4 block, mỗi block có 2 Conv–BatchNorm–ReLU, pooling và dropout; cuối là bộ phân loại |
+| `dataset.py` | Nạp ảnh, lật ngang khi train, chuẩn hóa |
+| `train.py` | Train/validation, giảm learning rate, dừng sớm và lưu checkpoint |
+| `evaluate.py` | Nạp checkpoint, đánh giá test, xuất báo cáo |
+| `plot_results.py` | Vẽ loss/accuracy và confusion matrix |
 
 ## Huấn luyện
 
-Train và evaluate tự chọn **CUDA → DirectML → CPU** theo khả năng của máy. Chỉ cài một trong các môi trường sau trên mỗi máy:
-
-| Phần cứng | Tạo môi trường | Kích hoạt |
-|---|---|---|
-| NVIDIA, driver tương thích CUDA 12.1 | `conda env create -f environment-cuda.yml` | `conda activate road_damage_cuda` |
-| GPU dùng DirectML trên Windows | `conda env create -f environment-directml.yml` | `conda activate road_damage_directml` |
-| CPU | `conda env create -f environment.yml` | `conda activate road_damage_env` |
-
-Các môi trường dùng cùng phiên bản API `torch==2.4.1`, `torchvision==0.19.1`, nhưng cài binary theo backend. CUDA dùng wheel CUDA 12.1 theo [hướng dẫn PyTorch](https://pytorch.org/get-started/previous-versions/#v241). DirectML giữ bộ phiên bản đã kiểm tra trong `environment-directml.yml`. Không cài `torch-directml` vào môi trường CUDA vì dependency của nó có thể thay bản torch đã cài. Máy CUDA/CPU không cần import hoặc cài DirectML.
-
-Sau khi kích hoạt môi trường, mọi thành viên chạy cùng một lệnh:
-
 ```powershell
-python train.py simple_cnn
-python train.py transfer_model
+.\.conda\Scripts\python.exe train.py complex_cnn
 ```
 
-Có thể chọn rõ backend và batch size bằng CLI, không cần sửa file chung rồi push lên Git:
+Lệnh này bắt đầu một lượt train mới, không tiếp tục checkpoint cũ.
+Mỗi lượt tạo `runs/complex_cnn/run_###/`, không ghi đè các lượt trước.
+Simple CNN cũng dùng được qua `train.py simple_cnn`.
+
+Sửa tham số trong `configs/complex_cnn.json` trước khi train:
+
+| Tham số mặc định | Giá trị |
+|---|---|
+| Epoch tối đa / batch size | 40 / 32 |
+| Adam: learning rate / weight decay | 0.001 / 0.0001 |
+| Giảm learning rate | Nhân 0.5 sau 4 epoch không giảm validation loss đủ ngưỡng, tối thiểu 0.000001 |
+| Early stopping | Dừng sau 10 epoch không giảm validation loss đủ 0.0001 |
+| Chọn checkpoint | Accuracy validation cao nhất; bằng nhau thì lấy loss thấp hơn |
+| Seed | 42 |
+
+Scheduler và early stopping theo dõi validation loss. Ngưỡng `min_delta` dùng cho
+việc giảm learning rate/dừng sớm, không ngăn lưu checkpoint tốt hơn dù cải thiện nhỏ.
+`checkpoint_monitor` có thể là `val_acc` hoặc `val_loss`; cấu hình lịch sử từng run
+nằm trong `summary.json` của run đó.
+
+Code tự chọn CUDA nếu có, dùng AMP trên GPU hỗ trợ và FP32 trên CPU; nạp dữ liệu
+trong tiến trình chính (`num_workers=0`). Có thể ép CPU bằng `--device cpu`.
+Các cờ cũ như `--epochs`, `--batch-size`, `--num-workers`, `--no-amp`,
+`--deterministic`, `--skip-test`, `--evaluate-test` đã bỏ.
+Không còn khóa `evaluate_test` trong config: mọi lượt train chỉ dùng train/validation.
+
+## Kết quả và đánh giá
+
+Sau train có đúng 4 file; sau đánh giá test có tổng cộng 6 file:
+
+| File | Nội dung |
+|---|---|
+| `best_model.pth` | Trọng số tại epoch được chọn |
+| `summary.json` | Cấu hình thực tế, thứ tự lớp, normalization, epoch tốt nhất và metric |
+| `history.csv` | Loss, accuracy train/validation và learning rate mỗi epoch |
+| `training_curves.png` | Hai biểu đồ loss và accuracy |
+| `classification_report.csv` | Precision, recall, F1, support từng lớp và trung bình trên test |
+| `confusion_matrix.png` | Test: hàng là lớp thật, cột là dự đoán |
+
+Chỉ đánh giá test sau khi chốt mô hình. Ví dụ với một lượt train mới:
 
 ```powershell
-python train.py transfer_model --device cuda --batch-size 16
-python train.py transfer_model --device directml --batch-size 8
-python train.py transfer_model --device cpu --batch-size 4
-python evaluate.py ./runs/transfer_model/run_004 --device cpu --batch-size 8
+.\.conda\Scripts\python.exe evaluate.py runs/complex_cnn/run_001
+.\.conda\Scripts\python.exe plot_results.py runs/complex_cnn/run_001
 ```
 
-Khi không truyền `--device`, `main()` trong train/evaluate tự chọn CUDA → DirectML → CPU. Option nhận `cpu`, `cuda` hoặc `directml`; chỉ định backend không khả dụng sẽ báo lỗi. Checkpoint luôn lưu tensor trên CPU nên có thể chuyển giữa các backend; evaluation chọn thiết bị của máy hiện tại, không phụ thuộc backend ghi trong run cũ. Kết quả số học giữa các backend có thể có sai khác nhỏ. Batch size ghi đè được lưu vào summary của run, không sửa JSON cấu hình.
+Thay `run_001` bằng thư mục thực tế. `evaluate.py` không train lại; nó cập nhật
+báo cáo test và summary trong thư mục được truyền vào, dùng normalization đã lưu.
+`plot_results.py` vẽ lại đường học từ CSV; với run cũ có `confusion_matrix.csv`,
+nó cũng vẽ lại confusion matrix. Run mới lưu confusion matrix trực tiếp thành PNG,
+không có CSV trung gian. Các script không xóa file thừa trong run cũ.
 
-Tham số nằm trong `configs/simple_cnn.json`. Mỗi lần chạy tạo một thư mục mới `runs/simple_cnn/run_###/`, không ghi đè run trước. Trong mỗi run có `best_model.pth`, `history.csv`, `training_curves.png`, `confusion_matrix.csv`, `confusion_matrix.png` và `summary.json`. Sau khi huấn luyện, `train.py` tự đánh giá trên test và tạo confusion matrix.
+## Complex CNN hiện tại: dùng V2, không cần train lại
 
-### Transfer learning
+| Chỉ số tại checkpoint | V1 | V2 | V3 |
+|---|---:|---:|---:|
+| Epoch tối đa / thực tế | 10 / 10 | 40 / 40 | 100 / 63 |
+| Epoch checkpoint | 10 | 40 | 53 |
+| Validation loss | 0,72938 | **0,51889** | 0,52224 |
+| Validation accuracy | 73,23% | **81,94%** | 81,41% |
+| Validation macro-F1 đã lưu | Không có | **82,54%** | 82,04% |
+
+V2 là checkpoint chính đã chọn dựa trên validation. Test V2 đã có:
+accuracy **83,51%**, macro-F1 **84,37%**, loss **0,47417**, trên **1.668 ảnh**.
+
+Bộ kết quả gọn để xem và chia sẻ nằm ở **`runs/complex_cnn/v2/`**, gồm 6 file
+trong bảng trên. Đây là kết quả V2 đã có, chỉ vẽ lại đường học; không train
+hay đánh giá test lại. Summary và lịch sử vẫn ghi đúng lần huấn luyện gốc.
+`v1/` và `v3/` mỗi thư mục giữ 4 file: checkpoint, summary, history và đường học.
+Các file kiến trúc/báo cáo phụ, bản V2 trùng và thư mục backup đã được dọn.
+
+`runs/cnn_with_metrics/` là kết quả Simple CNN cũ (10 epoch, checkpoint epoch 9,
+validation accuracy 71,83%, test accuracy 71,76%), được giữ riêng để so sánh baseline.
+Thư mục này không được dùng khi train hay đánh giá Complex CNN.
+
+V1/V2 chọn checkpoint theo accuracy; V3 chọn theo loss và có cấu hình khác.
+V3 dừng sớm ở epoch 63, giữ checkpoint epoch 53. Chênh lệch V2–V3 nhỏ, không đủ
+để khẳng định train lâu hơn luôn kém hơn. V1/V3 từng được đánh giá test rồi dọn
+báo cáo ở phiên bản trước; việc dọn không xóa lịch sử đánh giá đó.
+
+Việc rút gọn giữ nguyên kiến trúc, tiền xử lý và checkpoint. Một lần train mới có
+thể cho kết quả khác và chạy chậm hơn bản có nhiều worker; không gán kết quả
+lịch sử cho một lần chạy mới.
+
+Việc cần làm tiếp với Complex CNN:
+1. Xem `training_curves.png`, `classification_report.csv`, `confusion_matrix.png`
+   trong `v2/`.
+2. Viết phần thí nghiệm: mô tả kiến trúc, cấu hình V2 trong summary, so sánh validation
+   V1–V3, rồi báo cáo test của V2. Giải thích các lớp dễ nhầm từ confusion matrix.
+3. Giữ và chia sẻ cả thư mục `v2/` để có trọng số kèm cấu hình và kết quả.
+   Không cần train hay chạy test lại chỉ vì đã rút gọn code.
+
+`runs/`, `data/`, `.conda/` và checkpoint bị Git bỏ qua: cần sao lưu/chia sẻ riêng.
+
+## Kiểm thử
 
 ```powershell
-python train.py transfer_model
+.\.conda\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-`models/transfer_model.py` dùng **ResNet50 pretrained ImageNet (`IMAGENET1K_V2`)** trên PyTorch. ResNet50 được dùng cho các đặc trưng vết nứt và kết cấu mặt đường ([nghiên cứu](https://cronfa.swansea.ac.uk/Record/cronfa63288/Download/63288__27294__29c0c00d035e453286cc6c90575766e7.pdf), [weights Torchvision](https://docs.pytorch.org/vision/0.19/models/generated/torchvision.models.resnet50.html)). Head hiện tại: global average pooling → Linear(2048, 128) → ReLU → Dropout(0.5) → Linear(128, số lớp). `hidden_dim` và `dropout` chỉnh được trong config. Với dữ liệu hiện tại, số lớp là 4: D00, D10, D20, D40; đầu ra là logits.
-
-Chỉnh `fine_tune_blocks` trong `configs/transfer_model.json` để mở số residual block cuối mong muốn, từ **0 đến 16**. `0` chỉ train classifier; `1` mở block cuối của `layer4`; mặc định **`3` mở toàn bộ `layer4`**; `6` mở thêm 3 block cuối của `layer3`; `16` mở tất cả residual block nhưng vẫn freeze stem. BatchNorm trong block mở khóa học weight/bias nhưng giữ running mean/variance pretrained.
-
-Cấu hình hiện tại cân bằng khả năng thích nghi và kiểm soát overfitting. `run_004` có validation loss tăng về cuối; cấu hình hạn chế hơn của `run_005` chỉ đạt validation accuracy 0.7881 và test accuracy 0.7785. Lần điều chỉnh này chỉ mở lại 3 block cuối, giữ các siêu tham số khác của `run_005` để đo riêng ảnh hưởng của vùng fine-tuning:
-
-- Fine-tune **3 block của layer4**, đóng băng stem và layer1–layer3; giữ head nhỏ **128 neuron**.
-- **AdamW**, weight decay `1e-3`; learning rate backbone `1e-5`, classifier `3e-4`.
-- Label smoothing `0.05` cho loss dùng để backpropagation. Loss trong CSV và test vẫn là cross-entropy thường, để train/val/test có cùng cách tính.
-- Giữ Dropout `0.5`, augmentation hình học nhẹ; thêm ColorJitter cho độ sáng, tương phản và độ bão hòa. Không xoay 90° vì D00/D10 phụ thuộc hướng vết nứt.
-- `ReduceLROnPlateau(val_loss, factor=0.5, patience=1)` giảm learning rate khi loss chững lại.
-- **Early stopping** sau 4 epoch không cải thiện validation loss đủ `min_delta=0.001`, tối đa 15 epoch, batch size 16. Đặt `early_stopping_patience=0` để tắt.
-- **Chọn checkpoint theo validation loss nhỏ nhất**. `best_val_acc` là accuracy tại checkpoint này; `max_val_acc` ghi accuracy cao nhất quan sát được. `checkpoint_metric` phân biệt tiêu chí với các run cũ và simple CNN (vẫn chọn theo accuracy). Checkpoint cập nhật khi loss giảm dù mức giảm nhỏ hơn `min_delta`; ngưỡng này chỉ điều khiển early stopping.
-
-Run ResNet50 cũ `run_004` đạt test accuracy 0.8541 nhưng có dấu hiệu overfitting trên đường loss. Cấu hình hiện tại cần được huấn luyện để xác nhận mức cải thiện; không bảo đảm accuracy hoặc loại bỏ tuyệt đối overfitting. Early stopping giới hạn việc tiếp tục train khi validation loss không cải thiện; file `best_model.pth` giữ checkpoint có validation loss nhỏ nhất, không mặc định lấy epoch cuối. Chỉ dùng validation để chọn cấu hình, sau đó báo cáo test của checkpoint được chọn.
-
-Ảnh transfer learning được resize về 224 × 224 và chuẩn hóa theo ImageNet. Train xoay ±15°, dịch tối đa 10%, lật ngang và ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1); val/test không augmentation. Các CNN khác vẫn dùng mean/std của tập train. Lần train đầu cần tải pretrained weights; evaluate nạp checkpoint mà không tải lại weights.
-
-Kết quả vẫn lưu tại `runs/transfer_model/run_###/`: `best_model.pth`, `history.csv`, `training_curves.png`, `confusion_matrix.csv`, `confusion_matrix.png`, `summary.json`. Summary lưu cấu hình, kiến trúc, backend train/evaluate, số epoch thực tế và trạng thái early stopping. `evaluate.py` đọc được cả checkpoint MobileNetV2 và ResNet50 head 256 cũ; cấu hình mới dùng head 128 được dựng từ config đã lưu. Checkpoint chỉ chứa trọng số/buffer để suy luận, chưa lưu trạng thái optimizer để resume chính xác.
-
-`train.py complex_cnn` vẫn báo `NotImplementedError` cho đến khi xây dựng kiến trúc tương ứng.
-
-## Đánh giá hoặc vẽ lại run có sẵn
-
-Mặc định hai lệnh sau dùng run mới nhất của simple CNN:
-
-```powershell
-python evaluate.py
-python plot_results.py
-```
-
-Để chọn run cụ thể:
-
-```powershell
-python evaluate.py .\runs\simple_cnn\run_001
-python plot_results.py .\runs\simple_cnn\run_001
-```
-
-Trong confusion matrix, hàng là lớp thật và cột là lớp dự đoán. Đường train dùng ảnh lật ngang ngẫu nhiên, còn val/test không dùng augmentation.
-
-## Kiểm tra trước khi push
-
-```powershell
-python test_training.py -v
-```
-
-Các test chạy trên CPU, không tải pretrained weights và không cần dữ liệu ảnh. Kiểm tra chọn backend (CUDA/DirectML được mô phỏng), số block mở khóa, BatchNorm, dựng head cũ và chọn checkpoint/early stopping. Cần kiểm tra huấn luyện trên GPU thật của từng backend khi thay phiên bản thư viện.
+Kiểm thử gradient, nạp trọng số, chọn checkpoint, scheduler, early stopping và
+train/evaluate trên ảnh tổng hợp cho cả Simple CNN và Complex CNN. Dữ liệu thử nằm
+trong thư mục tạm, không thay đổi dữ liệu và kết quả thí nghiệm thật.

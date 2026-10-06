@@ -1,4 +1,4 @@
-"""Vẽ đường học và confusion matrix từ các file CSV của một run."""
+"""Vẽ loss/accuracy; hỗ trợ vẽ lại confusion matrix từ CSV của run cũ."""
 
 import csv
 import os
@@ -38,11 +38,12 @@ def plot_history(run_dir):
     plt.close(fig)
 
 
-def plot_confusion(run_dir):
-    with (run_dir / "confusion_matrix.csv").open(newline="", encoding="utf-8") as file:
-        rows = list(csv.reader(file))
-    classes = rows[0][1:]
-    matrix = [[int(value) for value in row[1:]] for row in rows[1:]]
+def plot_confusion(run_dir, matrix=None, classes=None):
+    if matrix is None:
+        with (run_dir / "confusion_matrix.csv").open(newline="", encoding="utf-8") as file:
+            rows = list(csv.reader(file))
+        classes = rows[0][1:]
+        matrix = [[int(value) for value in row[1:]] for row in rows[1:]]
 
     fig, ax = plt.subplots(figsize=(6, 5))
     image = ax.imshow(matrix, cmap="Blues")
@@ -61,16 +62,9 @@ def plot_confusion(run_dir):
 
 
 def main():
-    if len(sys.argv) > 1:
-        run_dir = Path(sys.argv[1]).resolve()
-    else:
-        runs = sorted(
-            path for path in (ROOT / "runs/simple_cnn").glob("run_*")
-            if (path / "history.csv").is_file()
-        )
-        if not runs:
-            raise FileNotFoundError("Chưa có run simple_cnn nào chứa history.csv.")
-        run_dir = runs[-1]
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python plot_results.py <run_dir>")
+    run_dir = Path(sys.argv[1]).resolve()
     if (run_dir / "history.csv").is_file():
         plot_history(run_dir)
     if (run_dir / "confusion_matrix.csv").is_file():
