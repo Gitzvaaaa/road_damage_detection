@@ -5,6 +5,8 @@ import csv
 import json
 import math
 import random
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +16,6 @@ from torch.utils.data import DataLoader
 
 from dataset import load_normalization, make_dataset
 from models import create_model
-from plot_results import plot_history
 
 
 ROOT = Path(__file__).resolve().parent
@@ -78,7 +79,7 @@ def evaluate_loss_accuracy(model, loader, loss_fn, device, amp=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Train a road damage classifier")
     parser.add_argument("model", nargs="?", default="simple_cnn",
                         choices=["simple_cnn", "complex_cnn", "transfer_model"])
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
@@ -160,7 +161,7 @@ def main():
 
     summary["status"] = "trained"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    plot_history(run_dir)
+    subprocess.run([sys.executable, str(ROOT / "plot_results.py"), str(run_dir)], check=True)
     print(f"Saved: {run_dir} | Best epoch: {summary['best_epoch']} | {summary['stop_reason']}")
 
 

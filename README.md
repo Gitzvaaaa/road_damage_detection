@@ -6,10 +6,10 @@ Kiến trúc nằm trong `models/`, tham số huấn luyện nằm trong `config
 ## Môi trường và dữ liệu
 
 Chạy các lệnh từ thư mục gốc dự án. Trên máy hiện tại, môi trường có đủ thư viện là
-`.conda/Scripts/python.exe` (môi trường venv, không phải conda prefix):
+`.conda/python.exe`:
 
 ```powershell
-.\.conda\Scripts\python.exe train.py --help
+& .\.conda\python.exe .\train.py --help
 ```
 
 Trên máy khác, tạo môi trường bằng `conda env create -f environment.yml`, sau đó
@@ -37,7 +37,7 @@ Không cần chạy lại các bước này để dùng checkpoint đã có. Ch�
 ## Huấn luyện
 
 ```powershell
-.\.conda\Scripts\python.exe train.py complex_cnn
+& .\.conda\python.exe .\train.py complex_cnn
 ```
 
 Lệnh này bắt đầu một lượt train mới, không tiếp tục checkpoint cũ.
@@ -82,8 +82,8 @@ Sau train có đúng 4 file; sau đánh giá test có tổng cộng 6 file:
 Chỉ đánh giá test sau khi chốt mô hình. Ví dụ với một lượt train mới:
 
 ```powershell
-.\.conda\Scripts\python.exe evaluate.py runs/complex_cnn/run_001
-.\.conda\Scripts\python.exe plot_results.py runs/complex_cnn/run_001
+& .\.conda\python.exe .\evaluate.py .\runs\complex_cnn\run_001
+& .\.conda\python.exe .\plot_results.py .\runs\complex_cnn\run_001
 ```
 
 Thay `run_001` bằng thư mục thực tế. `evaluate.py` không train lại; nó cập nhật
@@ -137,7 +137,7 @@ Việc cần làm tiếp với Complex CNN:
 ## Kiểm thử
 
 ```powershell
-.\.conda\Scripts\python.exe -m unittest discover -s tests -v
+& .\.conda\python.exe -m unittest discover -s tests -v
 ```
 
 Kiểm thử gradient, nạp trọng số, chọn checkpoint, scheduler, early stopping và

@@ -3,6 +3,8 @@
 import argparse
 import csv
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import torch
@@ -12,11 +14,10 @@ from torch.utils.data import DataLoader
 
 from dataset import make_dataset
 from models import create_model
-from plot_results import plot_confusion
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Evaluate a road damage checkpoint")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
     args = parser.parse_args()
@@ -56,7 +57,13 @@ def main():
         for name in [*data.classes, "macro avg", "weighted avg"]:
             writer.writerow([name, *[report[name][key] for key in
                                     ("precision", "recall", "f1-score", "support")]])
-    plot_confusion(run_dir, matrix, data.classes)
+    with (run_dir / "confusion_matrix.csv").open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Actual / Predicted", *data.classes])
+        for class_name, row in zip(data.classes, matrix):
+            writer.writerow([class_name, *row])
+    subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "plot_results.py"),
+                    str(run_dir)], check=True)
     summary.update(test_loss=total_loss.item() / len(data), test_acc=float(matrix.trace() / matrix.sum()),
                    test_macro_f1=report["macro avg"]["f1-score"], status="evaluated",
                    test_macro_precision=report["macro avg"]["precision"],
