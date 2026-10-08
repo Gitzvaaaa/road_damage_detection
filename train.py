@@ -5,6 +5,7 @@ import csv
 import json
 import math
 import random
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -51,7 +52,7 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, amp=False
     for images, labels in loader:
         images, labels = images.to(device), labels.to(device)
         optimizer.zero_grad(set_to_none=True)
-        with torch.autocast(device_type=device, dtype=torch.float16, enabled=amp):
+        with torch.autocast(device_type="cuda", dtype=torch.float16) if amp else nullcontext():
             outputs = model(images)
             loss = loss_fn(outputs, labels)
         scaler.scale(loss).backward()
@@ -66,10 +67,11 @@ def evaluate_loss_accuracy(model, loader, loss_fn, device, amp=False):
     model.eval()
     total_loss = torch.zeros((), device=device)
     correct = torch.zeros((), dtype=torch.long, device=device)
-    with torch.inference_mode():
+    # DirectML BatchNorm không tương thích inference tensor; no_grad vẫn tắt gradient.
+    with torch.no_grad():
         for images, labels in loader:
             images, labels = images.to(device), labels.to(device)
-            with torch.autocast(device_type=device, dtype=torch.float16, enabled=amp):
+            with torch.autocast(device_type="cuda", dtype=torch.float16) if amp else nullcontext():
                 outputs = model(images)
                 loss = loss_fn(outputs, labels)
             total_loss += loss * labels.size(0)
@@ -81,9 +83,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model", nargs="?", default="simple_cnn",
                         choices=["simple_cnn", "complex_cnn", "transfer_model"])
-    parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
+    parser.add_argument("--device", choices=["cpu", "cuda", "directml"], default=None)
+    parser.add_argument("--batch-size", type=int, help="Override batch size for this machine.")
     args = parser.parse_args()
     config = json.loads((ROOT / "configs" / f"{args.model}.json").read_text(encoding="utf-8"))
+    if args.batch_size is not None:
+        config["batch_size"] = args.batch_size
     if config["epochs"] < 1 or config["batch_size"] < 1:
         raise ValueError("epochs và batch_size phải >= 1.")
     monitor = config.get("checkpoint_monitor", "val_acc")
@@ -92,8 +97,24 @@ def main():
     random.seed(config["seed"])
     np.random.seed(config["seed"])
     torch.manual_seed(config["seed"])
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    amp = device == "cuda" and torch.cuda.get_device_capability()[0] >= 6
+    # Khi không chỉ định: ưu tiên CUDA, sau đó DirectML, cuối cùng CPU.
+    backend = args.device or ("cuda" if torch.cuda.is_available() else "directml")
+    if backend == "directml":
+        try:
+            import torch_directml
+            if not torch_directml.is_available():
+                raise RuntimeError("Không tìm thấy GPU DirectML.")
+            device = torch_directml.device()
+        except (ImportError, OSError, RuntimeError) as error:
+            if args.device == "directml":
+                parser.error(f"DirectML không khả dụng: {error}. Kiểm tra environment-directml.yml.")
+            backend, device = "cpu", torch.device("cpu")
+    else:
+        if backend == "cuda" and not torch.cuda.is_available():
+            parser.error("CUDA không khả dụng. Kiểm tra driver và môi trường CUDA.")
+        device = torch.device(backend)
+    # DirectML chạy FP32; chỉ CUDA dùng autocast và gradient scaling.
+    amp = backend == "cuda" and torch.cuda.get_device_capability()[0] >= 6
 
     train_data = make_dataset("train", augment=True)
     val_data = make_dataset("val")
@@ -104,7 +125,8 @@ def main():
     model = create_model(args.model, len(train_data.classes)).to(device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
-                                 weight_decay=config.get("weight_decay", 0.0))
+                                 weight_decay=config.get("weight_decay", 0.0),
+                                 foreach=False if backend == "directml" else None)
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
     stopping = EarlyStopping(**config.get("early_stopping", {}))
     scheduler = None
@@ -119,7 +141,7 @@ def main():
         "model": args.model, "run": run_dir.name, "config": config,
         "classes": train_data.classes, "normalization": load_normalization(),
         "split_sizes": {"train": len(train_data), "val": len(val_data)},
-        "runtime": {"device": device, "amp": amp, "num_workers": 0},
+        "runtime": {"device": str(device), "backend": backend, "amp": amp, "num_workers": 0},
         "checkpoint_monitor": monitor, "status": "training",
     }
     summary_path = run_dir / "summary.json"
@@ -146,7 +168,8 @@ def main():
             score = (val_acc, -val_loss) if monitor == "val_acc" else (-val_loss, val_acc)
             if score > best_score:
                 best_score = score
-                torch.save(model.state_dict(), run_dir / "best_model.pth")
+                torch.save({key: value.detach().cpu() for key, value in model.state_dict().items()},
+                           run_dir / "best_model.pth")
                 summary.update(best_epoch=epoch, best_val_acc=val_acc, best_val_loss=val_loss)
             if scheduler is not None:
                 scheduler.step(val_loss)
