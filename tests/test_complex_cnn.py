@@ -22,8 +22,8 @@ import train
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TRAIN_FILES = {"best_model.pth", "summary.json", "history.csv", "training_curves.png"}
-EVAL_FILES = TRAIN_FILES | {"classification_report.csv", "confusion_matrix.png"}
+TRAIN_FILES = {"best_model.pth", "summary.json", "history.csv", "training_curves.png", "validation_report.csv"}
+EVAL_FILES = TRAIN_FILES | {"classification_report.csv", "confusion_matrix.csv", "confusion_matrix.png"}
 
 
 class ComplexCNNTests(unittest.TestCase):
@@ -62,6 +62,35 @@ class ComplexCNNTests(unittest.TestCase):
             restored.load_state_dict(torch.load(path, weights_only=True))
             torch.testing.assert_close(model(images), restored(images), rtol=0, atol=0)
 
+    def test_explicit_cuda_does_not_fall_back_to_cpu(self):
+        with patch.object(torch.cuda, "is_available", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "Requested CUDA"):
+                train.select_device("cuda")
+
+    @unittest.skipUnless(torch.cuda.device_count() >= 2, "Requires two CUDA GPUs")
+    def test_two_gpu_amp_training_and_portable_checkpoint(self):
+        model = nn.Linear(3, 2).cuda()
+        seen = set()
+        handle = model.register_forward_hook(lambda module, inputs, output: seen.add(output.device.index))
+        parallel = nn.DataParallel(model)
+        before = model.weight.detach().clone()
+        data = torch.utils.data.TensorDataset(torch.randn(8, 3), torch.tensor([0, 1] * 4))
+        loader = torch.utils.data.DataLoader(data, batch_size=8)
+        optimizer = torch.optim.Adam(parallel.parameters(), lr=0.01)
+        scaler = torch.amp.GradScaler("cuda")
+        loss, accuracy = train.train_one_epoch(parallel, loader, nn.CrossEntropyLoss(),
+                                              optimizer, scaler, "cuda", amp=True)
+        handle.remove()
+        self.assertGreaterEqual(len(seen), 2)
+        self.assertTrue(np.isfinite(loss))
+        self.assertFalse(torch.equal(before, model.weight))
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "best_model.pth"
+            torch.save(parallel.module.state_dict(), path)
+            restored = nn.Linear(3, 2)
+            restored.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
+            torch.testing.assert_close(restored.weight, model.weight.cpu())
+
     def test_early_stopping_threshold(self):
         stopping = train.EarlyStopping(patience=2, min_delta=0.01)
         self.assertEqual([stopping.update(v) for v in (1.0, 0.995, 0.98, 0.99, 1.0)],
@@ -82,7 +111,7 @@ class ComplexCNNTests(unittest.TestCase):
                 workspace = Path(temp)
                 (workspace / "configs").mkdir()
                 config = {"epochs": 8, "batch_size": 2, "learning_rate": 0.01, "seed": 42,
-                          "checkpoint_monitor": monitor,
+                          "checkpoint_monitor": monitor, "evaluate_test": True,
                           "lr_scheduler": {"factor": 0.5, "patience": 0, "min_lr": 0.00001},
                           "early_stopping": {"patience": 2, "min_delta": 0.001}}
                 (workspace / "configs/simple_cnn.json").write_text(json.dumps(config))
@@ -91,14 +120,18 @@ class ComplexCNNTests(unittest.TestCase):
                 def validation(*args):
                     index = len(states)
                     states.append({k: v.clone() for k, v in model.state_dict().items()})
-                    return losses[index], accuracies[index]
+                    return losses[index], accuracies[index], {
+                        "macro avg": {"f1-score": 0.4, "precision": 0.4, "recall": 0.4, "support": 4},
+                        **{name: {"f1-score": 0.4, "precision": 0.4, "recall": 0.4, "support": 2}
+                           for name in ["D00", "D10", "weighted avg"]},
+                    }
 
                 with (patch.object(train, "ROOT", workspace),
                       patch.object(train, "make_dataset", return_value=data) as load_data,
                       patch.object(train, "load_normalization", return_value={"mean": [0.5]*3, "std": [0.25]*3}),
                       patch.object(train, "create_model", return_value=model),
                       patch.object(train, "evaluate_loss_accuracy", side_effect=validation),
-                      patch.object(train, "plot_history"),
+                      patch.object(train.subprocess, "run") as subprocess_run,
                       patch.object(sys, "argv", ["train.py", "--device", "cpu"])):
                     train.main()
                 run = workspace / "runs/simple_cnn/run_001"
@@ -110,6 +143,8 @@ class ComplexCNNTests(unittest.TestCase):
                 self.assertAlmostEqual(summary["final_learning_rate"], 0.0025)
                 self.assertEqual([c.args[0] for c in load_data.call_args_list], ["train", "val"])
                 self.assertNotIn("test_acc", summary)
+                self.assertFalse(summary["test_evaluation_requested"])
+                self.assertEqual(Path(subprocess_run.call_args.args[0][1]).name, "plot_results.py")
                 saved = torch.load(run / "best_model.pth", weights_only=True)
                 for name in saved:
                     torch.testing.assert_close(saved[name], states[expected_epoch - 1][name])
@@ -124,7 +159,7 @@ class ComplexCNNTests(unittest.TestCase):
                 shutil.copy2(ROOT / name, workspace / name)
             shutil.copytree(ROOT / "models", workspace / "models", ignore=shutil.ignore_patterns("__pycache__"))
             (workspace / "configs").mkdir()
-            data = workspace / "data/train/Japan/processed_classification"
+            data = workspace / "data/processed_classification"
             classes = ["D00", "D10", "D20", "D40"]
             rng = np.random.default_rng(42)
             for split, count in (("train", 2), ("val", 1), ("test", 1)):
@@ -137,6 +172,10 @@ class ComplexCNNTests(unittest.TestCase):
             stats_path = data / "normalization.json"
             env = {**os.environ, "OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2",
                    "CUDA_VISIBLE_DEVICES": "", "MPLCONFIGDIR": str(workspace / "mpl")}
+            # Các script được sao chép không còn .conda cạnh thư mục ROOT tạm.
+            conda_bin = ROOT / ".conda/Library/bin"
+            if os.name == "nt" and conda_bin.is_dir():
+                env["PATH"] = str(conda_bin) + os.pathsep + env.get("PATH", "")
 
             def run_cli(*args, success=True):
                 result = subprocess.run([sys.executable, *args], cwd=workspace, env=env,
@@ -153,7 +192,8 @@ class ComplexCNNTests(unittest.TestCase):
                     stats_path.write_text(json.dumps(normalization))
                     config = {"epochs": 1, "batch_size": 4, "learning_rate": 0.001, "seed": 42}
                     (workspace / f"configs/{model_name}.json").write_text(json.dumps(config))
-                    run_cli("train.py", model_name, "--device", "cpu")
+                    extra = ["--num-workers", "1", "--epochs", "1", "--batch-size", "4"] if model_name == "simple_cnn" else []
+                    run_cli("train.py", model_name, "--device", "cpu", *extra)
                     run = workspace / "runs" / model_name / "run_001"
                     self.assertEqual({p.name for p in run.iterdir()}, TRAIN_FILES)
                     summary = json.loads((run / "summary.json").read_text())
@@ -161,6 +201,12 @@ class ComplexCNNTests(unittest.TestCase):
                     self.assertEqual(summary["completed_epochs"], 1)
                     self.assertEqual(summary["status"], "trained")
                     self.assertNotIn("test_acc", summary)
+                    with (run / "validation_report.csv").open() as file:
+                        val_report = {r["class"]: r for r in csv.DictReader(file)}
+                    self.assertAlmostEqual(float(val_report["macro avg"]["f1-score"]), summary["best_val_macro_f1"])
+                    with (run / "history.csv").open() as file:
+                        history = list(csv.DictReader(file))
+                    self.assertGreater(float(history[0]["train_images_per_second"]), 0)
                     run_cli("evaluate.py", str(run), "--device", "cpu")
                     self.assertEqual({p.name for p in run.iterdir()}, EVAL_FILES)
                     for path in run.iterdir():
@@ -177,6 +223,11 @@ class ComplexCNNTests(unittest.TestCase):
                     restored = json.loads((run / "summary.json").read_text())
                     for key in ("test_acc", "test_loss", "test_macro_f1"):
                         self.assertEqual(restored[key], evaluated[key])
+                    if model_name == "simple_cnn":
+                        run_cli("train.py", model_name, "--device", "cpu", "--evaluate-test")
+                        opt_in = workspace / "runs" / model_name / "run_002"
+                        self.assertEqual({p.name for p in opt_in.iterdir()}, EVAL_FILES)
+                        self.assertIn("test_acc", json.loads((opt_in / "summary.json").read_text()))
                     restored["classes"] = list(reversed(classes))
                     (run / "summary.json").write_text(json.dumps(restored))
                     error = run_cli("evaluate.py", str(run), "--device", "cpu", success=False)
