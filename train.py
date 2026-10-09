@@ -83,7 +83,9 @@ def main():
     parser.add_argument("model", nargs="?", default="simple_cnn",
                         choices=["simple_cnn", "complex_cnn", "transfer_model"])
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
-    parser.add_argument("--seed", type=int, default=None, help="Ghi đè random seed")
+    parser.add_argument("--seed", type=int, default=None, help="Ghi de random seed")
+    parser.add_argument("--num-workers", type=int, default=None,
+                        help="Number of data loading workers (default: 2 on CUDA, 0 on CPU)")
     args = parser.parse_args()
     config = json.loads((ROOT / "configs" / f"{args.model}.json").read_text(encoding="utf-8"))
     if args.seed is not None:
@@ -98,13 +100,26 @@ def main():
     torch.manual_seed(config["seed"])
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     amp = device == "cuda" and torch.cuda.get_device_capability()[0] >= 6
+    if device == "cuda":
+        torch.backends.cudnn.benchmark = True
+
+    num_workers = args.num_workers if args.num_workers is not None else (2 if device == "cuda" else 0)
+    pin_memory = device == "cuda"
+    loader_kwargs = {
+        "batch_size": config["batch_size"],
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+    }
+    if num_workers > 0:
+        loader_kwargs["persistent_workers"] = True
+        loader_kwargs["prefetch_factor"] = 2
 
     train_data = make_dataset("train", augment=True)
     val_data = make_dataset("val")
     if train_data.classes != val_data.classes:
         raise ValueError("Tên hoặc thứ tự lớp của train và val không khớp.")
-    train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=config["batch_size"])
+    train_loader = DataLoader(train_data, shuffle=True, **loader_kwargs)
+    val_loader = DataLoader(val_data, shuffle=False, **loader_kwargs)
     model = create_model(args.model, len(train_data.classes)).to(device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
@@ -123,12 +138,18 @@ def main():
         "model": args.model, "run": run_dir.name, "config": config,
         "classes": train_data.classes, "normalization": load_normalization(),
         "split_sizes": {"train": len(train_data), "val": len(val_data)},
-        "runtime": {"device": device, "amp": amp, "num_workers": 0},
+        "runtime": {
+            "device": str(device),
+            "amp": amp,
+            "num_workers": num_workers,
+            "pin_memory": pin_memory,
+            "cudnn_benchmark": device == "cuda",
+        },
         "checkpoint_monitor": monitor, "status": "training",
     }
     summary_path = run_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    print(f"Device: {device} | AMP: {amp} | Run: {run_dir}", flush=True)
+    print(f"Device: {device} | AMP: {amp} | Workers: {num_workers} | Run: {run_dir}", flush=True)
     best_score = (float("-inf"), float("-inf"))
     with (run_dir / "history.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=[
