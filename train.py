@@ -83,8 +83,11 @@ def main():
     parser.add_argument("model", nargs="?", default="simple_cnn",
                         choices=["simple_cnn", "complex_cnn", "transfer_model"])
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
+    parser.add_argument("--seed", type=int, default=None, help="Ghi đè random seed")
     args = parser.parse_args()
     config = json.loads((ROOT / "configs" / f"{args.model}.json").read_text(encoding="utf-8"))
+    if args.seed is not None:
+        config["seed"] = args.seed
     if config["epochs"] < 1 or config["batch_size"] < 1:
         raise ValueError("epochs và batch_size phải >= 1.")
     monitor = config.get("checkpoint_monitor", "val_acc")
