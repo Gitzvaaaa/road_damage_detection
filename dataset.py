@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data/train/Japan/processed_classification"
+DATA_DIR = ROOT / "data/processed_classification"
 
 
 def load_normalization():
@@ -18,10 +18,22 @@ def load_normalization():
 
 
 def make_dataset(split, augment=False, normalization=None):
+    if augment and split != "train":
+        raise ValueError("Augmentation chỉ được áp dụng cho tập train.")
     stats = normalization if normalization is not None else load_normalization()
     steps = []
     if augment:
-        steps.append(transforms.RandomHorizontalFlip())
+        steps += [
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomAffine(
+                degrees=10, translate=(0.05, 0.05), scale=(0.9, 1.1)
+            ),
+            transforms.ColorJitter(
+                brightness=0.2, contrast=0.2, saturation=0.1, hue=0.02
+            ),
+            transforms.RandomPerspective(distortion_scale=0.1, p=0.2),
+            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
+        ]
     steps += [
         transforms.ToTensor(),
         transforms.Normalize(stats["mean"], stats["std"]),

@@ -124,7 +124,7 @@ class ComplexCNNTests(unittest.TestCase):
                 shutil.copy2(ROOT / name, workspace / name)
             shutil.copytree(ROOT / "models", workspace / "models", ignore=shutil.ignore_patterns("__pycache__"))
             (workspace / "configs").mkdir()
-            data = workspace / "data/train/Japan/processed_classification"
+            data = workspace / "data/processed_classification"
             classes = ["D00", "D10", "D20", "D40"]
             rng = np.random.default_rng(42)
             for split, count in (("train", 2), ("val", 1), ("test", 1)):
