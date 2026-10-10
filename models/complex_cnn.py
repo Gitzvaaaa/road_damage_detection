@@ -31,10 +31,10 @@ class ComplexCNN(nn.Module):
         if num_classes < 2:
             raise ValueError("num_classes phải lớn hơn hoặc bằng 2.")
         self.features = nn.Sequential(
-            ConvBlock(3, 16, dropout=0.10),
-            ConvBlock(16, 32, dropout=0.15),
-            ConvBlock(32, 64, dropout=0.20),
-            ConvBlock(64, 128, dropout=0.25),
+            ConvBlock(3, 16, dropout=0.05),
+            ConvBlock(16, 32, dropout=0.05),
+            ConvBlock(32, 64, dropout=0.10),
+            ConvBlock(64, 128, dropout=0.10),
         )
         # Giữ lưới 4x4 để bộ phân loại còn thông tin vị trí/hướng vết nứt.
         self.classifier = nn.Sequential(
