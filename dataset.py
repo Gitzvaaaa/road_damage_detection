@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data/processed_classification"
+DATA_DIR = ROOT / "data" / "processed_classification"
 
 
 def load_normalization():
@@ -18,11 +18,9 @@ def load_normalization():
 
 
 def make_dataset(split, augment=False, normalization=None):
-    if augment and split != "train":
-        raise ValueError("Augmentation chỉ được áp dụng cho tập train.")
     stats = normalization if normalization is not None else load_normalization()
     steps = []
-    if augment:
+    if augment and split == "train":
         steps += [
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomAffine(

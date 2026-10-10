@@ -21,22 +21,18 @@ SEED = 42
 def split_images(images):
     # Một ảnh gốc có thể tạo nhiều crop. Giữ chúng trong cùng một tập.
     source_images = [path.name.split("_obj")[0] + ".jpg" for path in images]
-    train_idx, remaining_idx = next(
-        GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=SEED).split(
-            images, groups=source_images
-        )
-    )
-    val_idx, test_idx = next(
-        GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=SEED).split(
-            remaining_idx, groups=[source_images[i] for i in remaining_idx]
-        )
-    )
+    splitter = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=SEED)
+    train_idx, rest_idx = next(splitter.split(images, groups=source_images))
+
+    rest_sources = [source_images[i] for i in rest_idx]
+    splitter = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=SEED)
+    val_idx, test_idx = next(splitter.split(rest_idx, groups=rest_sources))
 
     splits = [""] * len(images)
     for name, indices in (
         ("train", train_idx),
-        ("val", remaining_idx[val_idx]),
-        ("test", remaining_idx[test_idx]),
+        ("val", rest_idx[val_idx]),
+        ("test", rest_idx[test_idx]),
     ):
         for index in indices:
             splits[index] = name
@@ -44,18 +40,17 @@ def split_images(images):
 
 
 def main():
-    # Chia riêng từng nước để train/val/test đều có ảnh của mọi nước theo cùng tỉ lệ.
+    # Chia riêng từng nước theo cùng tỉ lệ.
     samples = []
     for country in COUNTRIES:
-        clean_dir = DATA_DIR / "train" / country / "processed_raw/clean"
+        clean_dir = DATA_DIR / country / "processed_raw/clean"
         images = sorted(clean_dir.glob("*/*.jpg"))
-        if not images:
-            raise FileNotFoundError(f"Không có ảnh trong {clean_dir}")
         source_images, splits = split_images(images)
-        samples += [(country, *sample) for sample in zip(images, source_images, splits)]
+        for path, source, split in zip(images, source_images, splits):
+            samples.append((country, path, source, split))
     classes = sorted({path.parent.name for _, path, _, _ in samples})
 
-    # Thư mục này chỉ chứa kết quả do script tạo, nên chạy lại sẽ tạo mới.
+    # Chạy lại sẽ thay thế kết quả cũ.
     if OUTPUT_DIR.exists():
         shutil.rmtree(OUTPUT_DIR)
     for split in ("train", "val", "test"):
@@ -63,33 +58,35 @@ def main():
             (OUTPUT_DIR / split / class_name).mkdir(parents=True)
 
     counts = {split: Counter() for split in ("train", "val", "test")}
-    channel_sum = np.zeros(3, dtype=np.float64)
-    channel_square_sum = np.zeros(3, dtype=np.float64)
-    pixel_count = 0
+    sum_rgb = np.zeros(3, dtype=np.float64)
+    sum_sq_rgb = np.zeros(3, dtype=np.float64)
+    num_pixels = 0
 
     with (OUTPUT_DIR / "split_manifest.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
-        writer.writerow(["country", "split", "class_name", "source_image", "source_path", "output_path"])
+        writer.writerow([
+            "country", "split", "class_name", "source_image", "source_path", "output_path"
+        ])
 
         for country, path, source_image, split in samples:
             class_name = path.parent.name
-            relative_output = Path(split) / class_name / path.name
-            shutil.copy2(path, OUTPUT_DIR / relative_output)
+            out_path = Path(split) / class_name / path.name
+            shutil.copy2(path, OUTPUT_DIR / out_path)
             writer.writerow([
                 country, split, class_name, source_image,
-                path.relative_to(ROOT).as_posix(), relative_output.as_posix(),
+                path.relative_to(ROOT).as_posix(), out_path.as_posix(),
             ])
             counts[split][class_name] += 1
 
             if split == "train":
-                with Image.open(path) as image:
-                    pixels = np.asarray(image, dtype=np.float64) / 255.0
-                channel_sum += pixels.sum(axis=(0, 1))
-                channel_square_sum += np.square(pixels).sum(axis=(0, 1))
-                pixel_count += pixels.shape[0] * pixels.shape[1]
+                with Image.open(path) as img:
+                    pixels = np.asarray(img, dtype=np.float64) / 255.0
+                sum_rgb += pixels.sum(axis=(0, 1))
+                sum_sq_rgb += np.square(pixels).sum(axis=(0, 1))
+                num_pixels += pixels.shape[0] * pixels.shape[1]
 
-    mean = channel_sum / pixel_count
-    std = np.sqrt(channel_square_sum / pixel_count - mean**2)
+    mean = sum_rgb / num_pixels
+    std = np.sqrt(sum_sq_rgb / num_pixels - mean**2)
     (OUTPUT_DIR / "normalization.json").write_text(
         json.dumps({"mean": mean.tolist(), "std": std.tolist()}, indent=2),
         encoding="utf-8",
