@@ -51,7 +51,10 @@ def main():
     batch_size = summary.get("config", {}).get("batch_size", summary.get("batch_size", 32))
     batch_size = args.batch_size or batch_size
     loader = DataLoader(data, batch_size=batch_size)
-    model = create_model(summary["model"], len(data.classes), pretrained=False)
+    cfg = summary.get("config", {})
+    model = create_model(summary["model"], len(data.classes), pretrained=False,
+                         fine_tune_blocks=cfg.get("fine_tune_blocks", 3),
+                         dropout=cfg.get("dropout", 0.5))
     model.load_state_dict(torch.load(run_dir / "best_model.pth", map_location="cpu", weights_only=True))
     model = model.to(device)
     model.eval()

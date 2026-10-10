@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data/train/Japan/processed_classification"
+DATA_DIR = ROOT / "data/processed_classification"
 
 
 def load_normalization():

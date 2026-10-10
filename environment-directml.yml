@@ -8,6 +8,8 @@ dependencies:
       - torch-directml==0.2.5.dev240914
       - torch==2.4.1
       - torchvision==0.19.1
+      - ultralytics==8.3.0
+      - huggingface-hub==0.26.2
       - numpy
       - pandas
       - matplotlib

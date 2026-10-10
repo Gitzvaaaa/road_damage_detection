@@ -45,7 +45,7 @@ class EarlyStopping:
         return self.patience > 0 and self.bad_epochs >= self.patience
 
 
-def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, amp=False):
+def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, amp=False, metric_fn=None):
     model.train()
     total_loss = torch.zeros((), device=device)
     correct = torch.zeros((), dtype=torch.long, device=device)
@@ -58,7 +58,8 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, amp=False
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-        total_loss += loss.detach() * labels.size(0)
+        metric_loss = metric_fn(outputs.detach().float(), labels) if metric_fn else loss.detach()
+        total_loss += metric_loss * labels.size(0)
         correct += (outputs.detach().argmax(dim=1) == labels).sum()
     return total_loss.item() / len(loader.dataset), correct.item() / len(loader.dataset)
 
@@ -87,6 +88,9 @@ def main():
     parser.add_argument("--batch-size", type=int, help="Override batch size for this machine.")
     args = parser.parse_args()
     config = json.loads((ROOT / "configs" / f"{args.model}.json").read_text(encoding="utf-8"))
+    transfer = args.model == "transfer_model"
+    if transfer:
+        config["epochs"] = config["head_epochs"] + config["fine_tune_epochs"]
     if args.batch_size is not None:
         config["batch_size"] = args.batch_size
     if config["epochs"] < 1 or config["batch_size"] < 1:
@@ -116,21 +120,31 @@ def main():
     # DirectML chạy FP32; chỉ CUDA dùng autocast và gradient scaling.
     amp = backend == "cuda" and torch.cuda.get_device_capability()[0] >= 6
 
-    train_data = make_dataset("train", augment=True)
-    val_data = make_dataset("val")
+    stats = load_normalization() if not transfer else None
+    if transfer:
+        from models.transfer_model import NORMALIZATION
+        stats = NORMALIZATION
+    train_data = make_dataset("train", augment=True, normalization=stats)
+    val_data = make_dataset("val", normalization=stats)
     if train_data.classes != val_data.classes:
         raise ValueError("Tên hoặc thứ tự lớp của train và val không khớp.")
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
     val_loader = DataLoader(val_data, batch_size=config["batch_size"])
-    model = create_model(args.model, len(train_data.classes)).to(device)
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
+    model = create_model(args.model, len(train_data.classes),
+                         fine_tune_blocks=config.get("fine_tune_blocks", 3),
+                         dropout=config.get("dropout", 0.5)).to(device)
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=config.get("label_smoothing", 0.0))
+    metric_fn = nn.CrossEntropyLoss()
+    params = model.classifier.parameters() if transfer else model.parameters()
+    optimizer_cls = torch.optim.AdamW if transfer else torch.optim.Adam
+    lr = config["classifier_learning_rate"] if transfer else config["learning_rate"]
+    optimizer = optimizer_cls(params, lr=lr,
                                  weight_decay=config.get("weight_decay", 0.0),
                                  foreach=False if backend == "directml" else None)
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
-    stopping = EarlyStopping(**config.get("early_stopping", {}))
+    stopping = EarlyStopping(**({} if transfer else config.get("early_stopping", {})))
     scheduler = None
-    if config.get("lr_scheduler"):
+    if config.get("lr_scheduler") and not transfer:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", threshold=stopping.min_delta,
             threshold_mode="abs", **config["lr_scheduler"])
@@ -139,7 +153,7 @@ def main():
     run_dir.mkdir(parents=True)
     summary = {
         "model": args.model, "run": run_dir.name, "config": config,
-        "classes": train_data.classes, "normalization": load_normalization(),
+        "classes": train_data.classes, "normalization": stats,
         "split_sizes": {"train": len(train_data), "val": len(val_data)},
         "runtime": {"device": str(device), "backend": backend, "amp": amp, "num_workers": 0},
         "checkpoint_monitor": monitor, "status": "training",
@@ -153,10 +167,19 @@ def main():
             "epoch", "train_loss", "train_acc", "val_loss", "val_acc", "learning_rate"])
         writer.writeheader()
         for epoch in range(1, config["epochs"] + 1):
+            if transfer and epoch == config["head_epochs"] + 1:
+                model.unfreeze()
+                optimizer.add_param_group({
+                    "params": [p for p in model.features.parameters() if p.requires_grad],
+                    "lr": config["learning_rate"],
+                })
+                if config.get("lr_scheduler"):
+                    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                        optimizer, mode="min", **config["lr_scheduler"])
             learning_rate = optimizer.param_groups[0]["lr"]
             train_loss, train_acc = train_one_epoch(
-                model, train_loader, loss_fn, optimizer, scaler, device, amp)
-            val_loss, val_acc = evaluate_loss_accuracy(model, val_loader, loss_fn, device, amp)
+                model, train_loader, loss_fn, optimizer, scaler, device, amp, metric_fn)
+            val_loss, val_acc = evaluate_loss_accuracy(model, val_loader, metric_fn, device, amp)
             if not all(math.isfinite(v) for v in (train_loss, val_loss)):
                 raise FloatingPointError("Loss không hữu hạn; dừng train.")
             writer.writerow(dict(epoch=epoch, train_loss=train_loss, train_acc=train_acc,

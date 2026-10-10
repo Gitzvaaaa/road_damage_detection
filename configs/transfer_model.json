@@ -1,15 +1,17 @@
 {
   "model": "transfer_model",
-  "epochs": 10,
+  "architecture": "yolov8m",
+  "epochs": 25,
+  "head_epochs": 10,
+  "fine_tune_epochs": 15,
   "batch_size": 16,
   "fine_tune_blocks": 3,
-  "hidden_dim": 128,
   "dropout": 0.5,
   "learning_rate": 0.00001,
   "classifier_learning_rate": 0.0003,
   "weight_decay": 0.001,
   "label_smoothing": 0.05,
-  "early_stopping_patience": 4,
-  "early_stopping_min_delta": 0.001,
+  "checkpoint_monitor": "val_loss",
+  "lr_scheduler": {"factor": 0.5, "patience": 1},
   "seed": 42
 }
