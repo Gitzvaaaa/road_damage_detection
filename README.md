@@ -92,8 +92,20 @@ Các khóa tùy chọn trong config, mô hình nào không khai báo thì không
 | `weight_decay`, `lr_scheduler`, `early_stopping`, `checkpoint_monitor` | Như bảng trên |
 | `label_smoothing` | Chỉ áp dụng cho loss khi train; validation loss luôn là cross-entropy thường |
 | `classifier_learning_rate` | Learning rate riêng cho `model.classifier`; phần còn lại dùng `learning_rate` |
-| `head_epochs`, `fine_tune_epochs` | Chỉ cho `transfer_model`: số epoch đầu chỉ train classifier, sau đó mở `fine_tune_blocks` block cuối của backbone; tổng phải bằng `epochs` |
-| `fine_tune_blocks`, `dropout` | Tham số kiến trúc của `transfer_model` |
+| `head_epochs`, `fine_tune_epochs`, `final_tune_epochs` | Chỉ cho `transfer_model`: số epoch của ba giai đoạn dưới đây; tổng phải bằng `epochs` |
+| `fine_tune_blocks`, `final_tune_blocks`, `dropout` | Chỉ cho `transfer_model`: số block cuối của backbone được mở ở từng giai đoạn và dropout của classifier |
+
+`transfer_model` train theo ba giai đoạn nối tiếp; giai đoạn nào có số epoch bằng 0 thì bỏ qua:
+
+| Giai đoạn | Epoch hiện tại | Backbone được mở | Learning rate classifier | Learning rate backbone |
+|---|---|---|---|---|
+| `head` | 1–3 | Không | `classifier_learning_rate` | — |
+| `fine_tune` | 4–15 | `fine_tune_blocks` block cuối | `fine_tune_classifier_learning_rate` | `learning_rate` |
+| `final_tune` | 16–30 | `final_tune_blocks` block cuối | `final_classifier_learning_rate` | `final_learning_rate` cho block đã mở từ trước, `new_blocks_learning_rate` cho block mới mở |
+
+Đầu mỗi giai đoạn, optimizer và scheduler được tạo lại và bộ đếm dừng sớm về 0. Early
+stopping dừng cả lượt train chứ không chuyển sang giai đoạn sau. Cột `learning_rate`
+trong `history.csv` của `transfer_model` là learning rate của classifier.
 
 `transfer_model` dùng ảnh trong khoảng 0–1, không trừ mean/std của tập train
 (`NORMALIZATION` trong `models/transfer_model.py`). Normalization thực tế của mỗi run

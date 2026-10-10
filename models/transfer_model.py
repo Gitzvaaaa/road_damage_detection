@@ -30,10 +30,11 @@ class TransferModel(nn.Module):
             nn.Linear(channels, num_classes),
         )
 
-    def unfreeze(self):
+    def unfreeze(self, num_blocks=None):
+        num_blocks = self.fine_tune_blocks if num_blocks is None else num_blocks
         blocks = list(self.features.children())
         self.features.requires_grad_(False)
-        for block in blocks[len(blocks) - self.fine_tune_blocks:]:
+        for block in blocks[len(blocks) - num_blocks:]:
             block.requires_grad_(True)
 
     def train(self, mode=True):
