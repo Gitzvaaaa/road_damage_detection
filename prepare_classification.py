@@ -1,4 +1,4 @@
-"""Chia ảnh clean thành train/val/test và tính mean/std từ tập train."""
+"""Chia ảnh clean của từng nước thành train/val/test và tính mean/std từ tập train."""
 
 import csv
 import json
@@ -12,17 +12,13 @@ from sklearn.model_selection import GroupShuffleSplit
 
 
 ROOT = Path(__file__).resolve().parent
-CLEAN_DIR = ROOT / "data/train/Japan/processed_raw/clean"
-OUTPUT_DIR = ROOT / "data/train/Japan/processed_classification"
+DATA_DIR = ROOT / "data"
+COUNTRIES = ["Japan", "Czech"]
+OUTPUT_DIR = DATA_DIR / "processed_classification"
 SEED = 42
 
 
-def main():
-    classes = sorted(folder.name for folder in CLEAN_DIR.iterdir() if folder.is_dir())
-    images = sorted(CLEAN_DIR.glob("*/*.jpg"))
-    if not images:
-        raise FileNotFoundError(f"Không có ảnh trong {CLEAN_DIR}")
-
+def split_images(images):
     # Một ảnh gốc có thể tạo nhiều crop. Giữ chúng trong cùng một tập.
     source_images = [path.name.split("_obj")[0] + ".jpg" for path in images]
     train_idx, remaining_idx = next(
@@ -44,6 +40,20 @@ def main():
     ):
         for index in indices:
             splits[index] = name
+    return source_images, splits
+
+
+def main():
+    # Chia riêng từng nước để train/val/test đều có ảnh của mọi nước theo cùng tỉ lệ.
+    samples = []
+    for country in COUNTRIES:
+        clean_dir = DATA_DIR / "train" / country / "processed_raw/clean"
+        images = sorted(clean_dir.glob("*/*.jpg"))
+        if not images:
+            raise FileNotFoundError(f"Không có ảnh trong {clean_dir}")
+        source_images, splits = split_images(images)
+        samples += [(country, *sample) for sample in zip(images, source_images, splits)]
+    classes = sorted({path.parent.name for _, path, _, _ in samples})
 
     # Thư mục này chỉ chứa kết quả do script tạo, nên chạy lại sẽ tạo mới.
     if OUTPUT_DIR.exists():
@@ -59,14 +69,14 @@ def main():
 
     with (OUTPUT_DIR / "split_manifest.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
-        writer.writerow(["split", "class_name", "source_image", "source_path", "output_path"])
+        writer.writerow(["country", "split", "class_name", "source_image", "source_path", "output_path"])
 
-        for path, source_image, split in zip(images, source_images, splits):
+        for country, path, source_image, split in samples:
             class_name = path.parent.name
             relative_output = Path(split) / class_name / path.name
             shutil.copy2(path, OUTPUT_DIR / relative_output)
             writer.writerow([
-                split, class_name, source_image,
+                country, split, class_name, source_image,
                 path.relative_to(ROOT).as_posix(), relative_output.as_posix(),
             ])
             counts[split][class_name] += 1

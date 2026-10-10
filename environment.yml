@@ -19,5 +19,7 @@ dependencies:
   - pip:
       - torch
       - torchvision
+      - ultralytics
+      - huggingface_hub
 
    

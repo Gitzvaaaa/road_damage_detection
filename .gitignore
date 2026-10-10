@@ -12,6 +12,7 @@ runs/
 *.pt
 *.pth
 *.onnx
+*.zip
 
 # Secrets
 .env

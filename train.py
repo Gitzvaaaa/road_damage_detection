@@ -15,7 +15,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from dataset import load_normalization, make_dataset
-from models import create_model
+from models import MODEL_NAMES, create_model, model_normalization
 
 
 ROOT = Path(__file__).resolve().parent
@@ -43,6 +43,28 @@ class EarlyStopping:
         else:
             self.bad_epochs += 1
         return self.patience > 0 and self.bad_epochs >= self.patience
+
+
+def make_optimizer(model, config):
+    """Adam trên các tham số đang mở; classifier dùng learning rate riêng nếu config có."""
+    params = [p for p in model.parameters() if p.requires_grad]
+    groups = [{"params": params}]
+    if "classifier_learning_rate" in config:
+        head = list(model.classifier.parameters())
+        head_ids = {id(p) for p in head}
+        groups = [{"params": head, "lr": config["classifier_learning_rate"]},
+                  {"params": [p for p in params if id(p) not in head_ids]}]
+    return torch.optim.Adam([group for group in groups if group["params"]],
+                            lr=config["learning_rate"],
+                            weight_decay=config.get("weight_decay", 0.0))
+
+
+def make_scheduler(optimizer, config, min_delta):
+    if not config.get("lr_scheduler"):
+        return None
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", threshold=min_delta,
+        threshold_mode="abs", **config["lr_scheduler"])
 
 
 def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, amp=False):
@@ -80,10 +102,9 @@ def evaluate_loss_accuracy(model, loader, loss_fn, device, amp=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Train a road damage classifier")
-    parser.add_argument("model", nargs="?", default="simple_cnn",
-                        choices=["simple_cnn", "complex_cnn", "transfer_model"])
+    parser.add_argument("model", nargs="?", default="simple_cnn", choices=MODEL_NAMES)
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
-    parser.add_argument("--seed", type=int, default=None, help="Ghi de random seed")
+    parser.add_argument("--seed", type=int, default=None, help="Ghi đè random seed")
     parser.add_argument("--num-workers", type=int, default=None,
                         help="Number of data loading workers (default: 2 on CUDA, 0 on CPU)")
     args = parser.parse_args()
@@ -92,6 +113,10 @@ def main():
         config["seed"] = args.seed
     if config["epochs"] < 1 or config["batch_size"] < 1:
         raise ValueError("epochs và batch_size phải >= 1.")
+    # head_epochs đầu chỉ train classifier, phần còn lại fine-tune (transfer_model).
+    head_epochs = config.get("head_epochs", 0)
+    if head_epochs + config.get("fine_tune_epochs", config["epochs"] - head_epochs) != config["epochs"]:
+        raise ValueError("head_epochs + fine_tune_epochs phải bằng epochs.")
     monitor = config.get("checkpoint_monitor", "val_acc")
     if monitor not in ("val_acc", "val_loss"):
         raise ValueError("checkpoint_monitor phải là val_acc hoặc val_loss.")
@@ -114,29 +139,31 @@ def main():
         loader_kwargs["persistent_workers"] = True
         loader_kwargs["prefetch_factor"] = 2
 
-    train_data = make_dataset("train", augment=True)
-    val_data = make_dataset("val")
+    normalization = model_normalization(args.model) or load_normalization()
+    train_data = make_dataset("train", augment=True, normalization=normalization)
+    val_data = make_dataset("val", normalization=normalization)
     if train_data.classes != val_data.classes:
         raise ValueError("Tên hoặc thứ tự lớp của train và val không khớp.")
     train_loader = DataLoader(train_data, shuffle=True, **loader_kwargs)
     val_loader = DataLoader(val_data, shuffle=False, **loader_kwargs)
-    model = create_model(args.model, len(train_data.classes)).to(device)
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
-                                 weight_decay=config.get("weight_decay", 0.0))
+    model = create_model(args.model, len(train_data.classes), config).to(device)
+    if head_epochs and not hasattr(model, "unfreeze"):
+        raise ValueError(f"{args.model} không có giai đoạn fine-tune; bỏ head_epochs khỏi config.")
+    if not head_epochs and hasattr(model, "unfreeze"):
+        model.unfreeze()
+    # Label smoothing chỉ dùng khi train; validation loss luôn là cross-entropy thường.
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=config.get("label_smoothing", 0.0))
+    val_loss_fn = nn.CrossEntropyLoss()
+    optimizer = make_optimizer(model, config)
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
     stopping = EarlyStopping(**config.get("early_stopping", {}))
-    scheduler = None
-    if config.get("lr_scheduler"):
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", threshold=stopping.min_delta,
-            threshold_mode="abs", **config["lr_scheduler"])
+    scheduler = make_scheduler(optimizer, config, stopping.min_delta)
 
     run_dir = next_run_dir(args.model)
     run_dir.mkdir(parents=True)
     summary = {
         "model": args.model, "run": run_dir.name, "config": config,
-        "classes": train_data.classes, "normalization": load_normalization(),
+        "classes": train_data.classes, "normalization": normalization,
         "split_sizes": {"train": len(train_data), "val": len(val_data)},
         "runtime": {
             "device": str(device),
@@ -156,10 +183,16 @@ def main():
             "epoch", "train_loss", "train_acc", "val_loss", "val_acc", "learning_rate"])
         writer.writeheader()
         for epoch in range(1, config["epochs"] + 1):
+            if head_epochs and epoch == head_epochs + 1:
+                # Mở các block cuối của backbone; optimizer và scheduler bắt đầu lại.
+                model.unfreeze()
+                optimizer = make_optimizer(model, config)
+                scheduler = make_scheduler(optimizer, config, stopping.min_delta)
+                stopping.bad_epochs = 0
             learning_rate = optimizer.param_groups[0]["lr"]
             train_loss, train_acc = train_one_epoch(
                 model, train_loader, loss_fn, optimizer, scaler, device, amp)
-            val_loss, val_acc = evaluate_loss_accuracy(model, val_loader, loss_fn, device, amp)
+            val_loss, val_acc = evaluate_loss_accuracy(model, val_loader, val_loss_fn, device, amp)
             if not all(math.isfinite(v) for v in (train_loss, val_loss)):
                 raise FloatingPointError("Loss không hữu hạn; dừng train.")
             writer.writerow(dict(epoch=epoch, train_loss=train_loss, train_acc=train_acc,

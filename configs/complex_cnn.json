@@ -1,6 +1,6 @@
 {
   "model": "complex_cnn",
-  "epochs": 40,
+  "epochs": 100,
   "batch_size": 32,
   "learning_rate": 0.001,
   "weight_decay": 0.0001,

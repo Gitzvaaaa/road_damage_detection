@@ -16,31 +16,57 @@ from dataset import make_dataset
 from models import create_model
 
 
+def pick_device(requested, parser):
+    """Khi không chỉ định: ưu tiên CUDA, sau đó DirectML, cuối cùng CPU."""
+    backend = requested or ("cuda" if torch.cuda.is_available() else "directml")
+    if backend == "directml":
+        try:
+            import torch_directml
+            if not torch_directml.is_available():
+                raise RuntimeError("Không tìm thấy GPU DirectML.")
+            return backend, torch_directml.device()
+        except (ImportError, OSError, RuntimeError) as error:
+            if requested == "directml":
+                parser.error(f"DirectML không khả dụng: {error}. Cần cài torch-directml.")
+            return "cpu", torch.device("cpu")
+    if backend == "cuda" and not torch.cuda.is_available():
+        parser.error("CUDA không khả dụng. Kiểm tra driver và môi trường CUDA.")
+    return backend, torch.device(backend)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a road damage checkpoint")
     parser.add_argument("run_dir", type=Path)
-    parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
+    parser.add_argument("--device", choices=["cpu", "cuda", "directml"], default=None)
+    parser.add_argument("--batch-size", type=int, help="Ghi đè batch size cho máy này.")
     args = parser.parse_args()
+    if args.batch_size is not None and args.batch_size < 1:
+        parser.error("--batch-size phải >= 1.")
     run_dir = args.run_dir.resolve()
     summary_path = run_dir / "summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    amp = device == "cuda" and summary.get("runtime", {}).get("amp", False)
+    config = summary.get("config", {})
+    backend, device = pick_device(args.device, parser)
+    amp = backend == "cuda" and summary.get("runtime", {}).get("amp", False)
+    print(f"Device: {device} | AMP: {amp}", flush=True)
     data = make_dataset("test", normalization=summary.get("normalization"))
     if data.classes != summary["classes"]:
         raise ValueError("Thứ tự lớp của test không khớp với checkpoint.")
-    batch_size = summary.get("config", {}).get("batch_size", summary.get("batch_size", 32))
+    batch_size = args.batch_size or config.get("batch_size", summary.get("batch_size", 32))
     loader = DataLoader(data, batch_size=batch_size)
-    model = create_model(summary["model"], len(data.classes)).to(device)
-    model.load_state_dict(torch.load(run_dir / "best_model.pth", map_location=device, weights_only=True))
+    # pretrained=False: trọng số lấy từ checkpoint, không tải lại backbone.
+    model = create_model(summary["model"], len(data.classes), config, pretrained=False)
+    model.load_state_dict(torch.load(run_dir / "best_model.pth", map_location="cpu", weights_only=True))
+    model = model.to(device)
     model.eval()
     loss_fn = nn.CrossEntropyLoss()
     total_loss = torch.zeros((), device=device)
     actual, predicted = [], []
-    with torch.inference_mode():
+    # DirectML BatchNorm cần no_grad thay vì inference_mode.
+    with torch.no_grad():
         for images, labels in loader:
             images, labels = images.to(device), labels.to(device)
-            with torch.autocast(device_type=device, dtype=torch.float16, enabled=amp):
+            with torch.autocast(device_type="cuda" if amp else "cpu", dtype=torch.float16, enabled=amp):
                 outputs = model(images)
                 loss = loss_fn(outputs, labels)
             total_loss += loss * labels.size(0)
@@ -69,7 +95,8 @@ def main():
                    test_macro_precision=report["macro avg"]["precision"],
                    test_macro_recall=report["macro avg"]["recall"],
                    test_weighted_f1=report["weighted avg"]["f1-score"],
-                   evaluation_runtime={"device": device, "amp": amp, "num_workers": 0})
+                   evaluation_runtime={"device": str(device), "backend": backend,
+                                       "amp": amp, "batch_size": batch_size, "num_workers": 0})
     summary.setdefault("split_sizes", {})["test"] = len(data)
     summary.pop("test_results_status", None)
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
