@@ -87,8 +87,6 @@ Sau khi train và đánh giá, mỗi run có 6 file:
 | `classification_report.csv` | Precision, recall, F1 từng lớp trên test |
 | `confusion_matrix.png` | Confusion matrix trên test |
 
-Các hình do `plot_results.py` vẽ; `train.py` và `evaluate.py` tự gọi file này.
-
 ## Kết quả
 
 | Mô hình | Validation accuracy | Test accuracy | Test macro-F1 |
@@ -97,7 +95,4 @@ Các hình do `plot_results.py` vẽ; `train.py` và `evaluate.py` tự gọi fi
 | `complex_cnn` | 85,47 ± 0,69% | 84,75 ± 1,21% | 85,28 ± 1,12% |
 | `transfer_model` | chưa cập nhật | chưa cập nhật | chưa cập nhật |
 
-Số của `complex_cnn` là trung bình ± độ lệch chuẩn của ba seed (42, 123, 999); các run
-nằm trong `runs/complex_cnn/run_01` đến `run_03`.
-
-`runs/`, `data/` và `.conda/` không được đưa lên Git nên cần chia sẻ riêng.
+Kết quả là trung bình ± độ lệch chuẩn của ba seed (42, 123, 999).
