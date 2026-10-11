@@ -94,7 +94,5 @@ After training and evaluation, each run has 6 files:
 | Model | Validation accuracy | Test accuracy | Test macro-F1 |
 |---|---:|---:|---:|
 | `simple_cnn` | to be updated | to be updated | to be updated |
-| `complex_cnn` | 85.47 ± 0.69% | 84.75 ± 1.21% | 85.28 ± 1.12% |
+| `complex_cnn` | 85.47% | 84.75% | 85.28% |
 | `transfer_model` | to be updated | to be updated | to be updated |
-
-Results are the mean ± standard deviation over three seeds (42, 123, 999).
