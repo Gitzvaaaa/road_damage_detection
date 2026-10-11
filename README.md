@@ -60,8 +60,8 @@ thế thư mục `data/processed_classification/`.
 ```
 
 Thay `complex_cnn` bằng `simple_cnn` hoặc `transfer_model`. Lệnh này bắt đầu một lượt
-train mới, không tiếp tục checkpoint cũ. Mỗi lượt tạo `runs/<model>/run_###/`, không
-ghi đè các lượt trước.
+train mới, không tiếp tục checkpoint cũ. Mỗi lượt tạo `runs/<model>/run_##/` với số
+kế tiếp (`run_01`, `run_02`, ...), không ghi đè các lượt trước.
 
 | Cờ | Ý nghĩa |
 |---|---|
@@ -113,7 +113,7 @@ trong `history.csv` của `transfer_model` là learning rate của classifier.
 
 ## Kết quả và đánh giá
 
-Sau train có 4 file; sau đánh giá test có tổng cộng 7 file:
+Sau train có 4 file; sau đánh giá test có tổng cộng 6 file:
 
 | File | Nội dung |
 |---|---|
@@ -122,36 +122,48 @@ Sau train có 4 file; sau đánh giá test có tổng cộng 7 file:
 | `history.csv` | Loss, accuracy train/validation và learning rate mỗi epoch |
 | `training_curves.png` | Hai biểu đồ loss và accuracy |
 | `classification_report.csv` | Precision, recall, F1, support từng lớp và trung bình trên test |
-| `confusion_matrix.csv` | Test: hàng là lớp thật, cột là dự đoán |
-| `confusion_matrix.png` | Hình vẽ từ `confusion_matrix.csv` |
+| `confusion_matrix.png` | Confusion matrix trên test: hàng là lớp thật, cột là dự đoán |
 
 Chỉ đánh giá test sau khi chốt mô hình:
 
 ```powershell
-& .\.conda\Scripts\python.exe .\evaluate.py .\runs\complex_cnn\run_001
+& .\.conda\Scripts\python.exe .\evaluate.py .\runs\complex_cnn\run_01
 ```
 
-Thay `run_001` bằng thư mục thực tế. `evaluate.py` không train lại; nó đọc tên mô hình,
+Thay `run_01` bằng thư mục thực tế. `evaluate.py` không train lại; nó đọc tên mô hình,
 cấu hình và normalization từ `summary.json` của run, rồi cập nhật báo cáo test và
 summary trong chính thư mục đó. Có thể thêm `--device cpu|cuda|directml` và
-`--batch-size N`. `plot_results.py <run_dir>` vẽ lại các hình từ `history.csv` và
-`confusion_matrix.csv`.
+`--batch-size N`. `plot_results.py <run_dir>` vẽ lại `training_curves.png` từ
+`history.csv`; confusion matrix chỉ được vẽ khi chạy `evaluate.py`.
 
-## Kết quả Complex CNN cũ (chỉ Japan)
+## Kết quả Complex CNN
 
-Các run V1–V3 trong `runs/complex_cnn/v1`, `v2`, `v3` được train khi dữ liệu chỉ có
-Japan (7.657 / 1.711 / 1.668 ảnh) và augmentation chỉ có lật ngang:
+Cấu hình ở trên, train trên `data/processed_classification/` (Japan và Czech) với ba
+seed: `runs/complex_cnn/run_01` (seed 42), `run_02` (seed 123), `run_03` (seed 999).
+Cột cuối là trung bình ± độ lệch chuẩn của ba seed.
 
-| Chỉ số tại checkpoint | V1 | V2 | V3 |
-|---|---:|---:|---:|
-| Epoch tối đa / thực tế | 10 / 10 | 40 / 40 | 100 / 63 |
-| Epoch checkpoint | 10 | 40 | 53 |
-| Validation loss | 0,72938 | 0,51889 | 0,52224 |
-| Validation accuracy | 73,23% | 81,94% | 81,41% |
+| Chỉ số tại checkpoint | Seed 42 | Seed 123 | Seed 999 | Trung bình |
+|---|---:|---:|---:|---:|
+| Epoch đã chạy / epoch checkpoint | 89 / 85 | 100 / 99 | 100 / 87 | — |
+| Validation accuracy | 85,72% | 84,69% | 85,99% | 85,47 ± 0,69% |
+| Validation loss | 0,4158 | 0,4514 | 0,4257 | 0,4310 ± 0,0184 |
+| Test accuracy | 85,69% | 83,39% | 85,17% | 84,75 ± 1,21% |
+| Test loss | 0,4306 | 0,4668 | 0,4450 | 0,4475 ± 0,0182 |
+| Test macro-precision | 86,34% | 84,30% | 85,83% | 85,49 ± 1,06% |
+| Test macro-recall | 86,05% | 83,81% | 85,46% | 85,10 ± 1,16% |
+| Test macro-F1 | 86,19% | 84,02% | 85,63% | 85,28 ± 1,12% |
 
-Các số này không so sánh được với kết quả trên dữ liệu hiện tại: split đã được chia
-lại nên val/test mới chứa ảnh mà V1–V3 đã học, và các checkpoint đó chưa từng thấy
-ảnh Czech. Kết quả dùng cho báo cáo phải lấy từ các run train lại trên
-`data/processed_classification/`.
+Trung bình ba seed theo từng lớp trên test (1.908 ảnh):
 
-`runs/`, `data/`, `.conda/`, checkpoint và file `.zip` bị Git bỏ qua: cần sao lưu/chia sẻ riêng.
+| Lớp | Precision | Recall | F1 | Số ảnh |
+|---|---:|---:|---:|---:|
+| D00 | 83,61% | 83,76% | 83,68% | 581 |
+| D10 | 86,90% | 86,96% | 86,93% | 432 |
+| D20 | 80,88% | 82,55% | 81,69% | 550 |
+| D40 | 90,56% | 87,15% | 88,82% | 345 |
+
+Test accuracy theo nước: Japan 85,15 ± 1,33% (1.693 ảnh), Czech 81,55 ± 1,07% (215 ảnh).
+Nhầm lẫn nhiều nhất là giữa D00 và D20: 10,1% ảnh D00 bị dự đoán là D20 và 9,9% ảnh
+D20 bị dự đoán là D00.
+
+`runs/`, `data/`, `.conda/` và checkpoint bị Git bỏ qua: cần sao lưu/chia sẻ riêng.

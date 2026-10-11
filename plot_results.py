@@ -1,6 +1,7 @@
 """Vẽ loss/accuracy; hỗ trợ vẽ lại confusion matrix từ CSV của run cũ."""
 
 import csv
+import json
 import os
 import sys
 from pathlib import Path
@@ -62,12 +63,16 @@ def plot_confusion(run_dir, matrix=None, classes=None):
 
 
 def main():
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: python plot_results.py <run_dir>")
+    if len(sys.argv) not in (2, 3):
+        raise SystemExit("Usage: python plot_results.py <run_dir> [confusion_json]")
     run_dir = Path(sys.argv[1]).resolve()
     if (run_dir / "history.csv").is_file():
         plot_history(run_dir)
-    if (run_dir / "confusion_matrix.csv").is_file():
+    if len(sys.argv) == 3:
+        # evaluate.py truyền ma trận dạng JSON: {"classes": [...], "matrix": [[...]]}.
+        confusion = json.loads(sys.argv[2])
+        plot_confusion(run_dir, confusion["matrix"], confusion["classes"])
+    elif (run_dir / "confusion_matrix.csv").is_file():
         plot_confusion(run_dir)
     print(f"Saved plots in {run_dir}")
 

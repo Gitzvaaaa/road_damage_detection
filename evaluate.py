@@ -83,13 +83,10 @@ def main():
         for name in [*data.classes, "macro avg", "weighted avg"]:
             writer.writerow([name, *[report[name][key] for key in
                                     ("precision", "recall", "f1-score", "support")]])
-    with (run_dir / "confusion_matrix.csv").open("w", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
-        writer.writerow(["Actual / Predicted", *data.classes])
-        for class_name, row in zip(data.classes, matrix):
-            writer.writerow([class_name, *row])
+    # Ma trận truyền thẳng cho plot_results.py; run chỉ giữ hình confusion_matrix.png.
+    confusion = json.dumps({"classes": data.classes, "matrix": matrix.tolist()})
     subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "plot_results.py"),
-                    str(run_dir)], check=True)
+                    str(run_dir), confusion], check=True)
     summary.update(test_loss=total_loss.item() / len(data), test_acc=float(matrix.trace() / matrix.sum()),
                    test_macro_f1=report["macro avg"]["f1-score"], status="evaluated",
                    test_macro_precision=report["macro avg"]["precision"],
