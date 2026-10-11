@@ -45,64 +45,6 @@ class EarlyStopping:
         return self.patience > 0 and self.bad_epochs >= self.patience
 
 
-def phase_starts(config):
-    """Epoch bắt đầu của từng giai đoạn train: {epoch: tên giai đoạn}.
-
-    head chỉ train classifier, fine_tune mở fine_tune_blocks block cuối của backbone,
-    final_tune mở final_tune_blocks block cuối. Config không khai báo giai đoạn nào thì
-    toàn bộ epochs là fine_tune (simple_cnn, complex_cnn).
-    """
-    head, final = config.get("head_epochs", 0), config.get("final_tune_epochs", 0)
-    fine = config.get("fine_tune_epochs", config["epochs"] - head - final)
-    if min(head, fine, final) < 0 or head + fine + final != config["epochs"]:
-        raise ValueError("head_epochs + fine_tune_epochs + final_tune_epochs phải bằng epochs.")
-    if final and "final_tune_blocks" not in config:
-        raise ValueError("final_tune_epochs cần final_tune_blocks trong config.")
-    starts, epoch = {}, 1
-    for phase, length in zip(("head", "fine_tune", "final_tune"), (head, fine, final)):
-        if length:
-            starts[epoch] = phase
-        epoch += length
-    return starts
-
-
-def make_optimizer(model, config, phase="fine_tune", new_params=()):
-    """Adam trên các tham số đang mở, learning rate theo giai đoạn.
-
-    Classifier dùng learning rate riêng nếu config có; new_params là phần backbone vừa
-    mở thêm ở final_tune.
-    """
-    base_lr, head_lr = config["learning_rate"], config.get("classifier_learning_rate")
-    new_lr = base_lr
-    if phase != "head":
-        head_lr = config.get("fine_tune_classifier_learning_rate", head_lr)
-    if phase == "final_tune":
-        head_lr = config.get("final_classifier_learning_rate", head_lr)
-        base_lr = config.get("final_learning_rate", base_lr)
-        new_lr = config.get("new_blocks_learning_rate", base_lr)
-    params = [p for p in model.parameters() if p.requires_grad]
-    head_ids = {id(p) for p in model.classifier.parameters()} if head_lr is not None else set()
-    new_ids = {id(p) for p in new_params}
-    groups = [{"params": [p for p in params if id(p) in head_ids], "lr": head_lr},
-              {"params": [p for p in params if id(p) not in head_ids and id(p) not in new_ids]},
-              {"params": [p for p in params if id(p) in new_ids], "lr": new_lr}]
-    return torch.optim.Adam([group for group in groups if group["params"]],
-                            lr=base_lr, weight_decay=config.get("weight_decay", 0.0))
-
-
-def start_phase(model, config, phase):
-    """Mở phần backbone của giai đoạn (model có unfreeze) rồi tạo optimizer cho giai đoạn đó."""
-    new_params = []
-    if phase != "head" and hasattr(model, "unfreeze"):
-        frozen = [p for p in model.parameters() if not p.requires_grad]
-        if phase == "final_tune":
-            model.unfreeze(config["final_tune_blocks"])
-            new_params = [p for p in frozen if p.requires_grad]
-        else:
-            model.unfreeze()
-    return make_optimizer(model, config, phase, new_params)
-
-
 def make_scheduler(optimizer, config, min_delta):
     if not config.get("lr_scheduler"):
         return None
@@ -153,11 +95,13 @@ def main():
                         help="Number of data loading workers (default: 2 on CUDA, 0 on CPU)")
     args = parser.parse_args()
     config = json.loads((ROOT / "configs" / f"{args.model}.json").read_text(encoding="utf-8"))
+    transfer = args.model == "transfer_model"
+    if transfer:
+        config["epochs"] = config["head_epochs"] + config["finetune_epochs"]
     if args.seed is not None:
         config["seed"] = args.seed
     if config["epochs"] < 1 or config["batch_size"] < 1:
         raise ValueError("epochs và batch_size phải >= 1.")
-    starts = phase_starts(config)
     monitor = config.get("checkpoint_monitor", "val_acc")
     if monitor not in ("val_acc", "val_loss"):
         raise ValueError("checkpoint_monitor phải là val_acc hoặc val_loss.")
@@ -188,14 +132,16 @@ def main():
     train_loader = DataLoader(train_data, shuffle=True, **loader_kwargs)
     val_loader = DataLoader(val_data, shuffle=False, **loader_kwargs)
     model = create_model(args.model, len(train_data.classes), config).to(device)
-    if len(starts) > 1 and not hasattr(model, "unfreeze"):
-        raise ValueError(f"{args.model} chỉ có một giai đoạn train; "
-                         "bỏ head_epochs/final_tune_epochs khỏi config.")
     # Label smoothing chỉ dùng khi train; validation loss luôn là cross-entropy thường.
     loss_fn = nn.CrossEntropyLoss(label_smoothing=config.get("label_smoothing", 0.0))
     val_loss_fn = nn.CrossEntropyLoss()
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
-    stopping = EarlyStopping(**config.get("early_stopping", {}))
+    parameters = model.classifier.parameters() if transfer else model.parameters()
+    optimizer = torch.optim.Adam(
+        parameters, lr=config["head_learning_rate"] if transfer else config["learning_rate"],
+        weight_decay=config.get("weight_decay", 0.0))
+    stopping = EarlyStopping(**({} if transfer else config.get("early_stopping", {})))
+    scheduler = None if transfer else make_scheduler(optimizer, config, stopping.min_delta)
 
     run_dir = next_run_dir(args.model)
     run_dir.mkdir(parents=True)
@@ -212,31 +158,43 @@ def main():
         },
         "checkpoint_monitor": monitor, "status": "training",
     }
+    if transfer:
+        from models.transfer_model import ARCHITECTURE, REPO_ID, REVISION
+        summary.update(architecture=ARCHITECTURE, finetune_blocks=[7, 8, 9],
+                       pretrained={"repo_id": REPO_ID, "revision": REVISION, "filename": "best.pt"})
     summary_path = run_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"Device: {device} | AMP: {amp} | Workers: {num_workers} | Run: {run_dir}", flush=True)
     best_score = (float("-inf"), float("-inf"))
     with (run_dir / "history.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=[
-            "epoch", "train_loss", "train_acc", "val_loss", "val_acc", "learning_rate"])
+            "epoch", "train_loss", "train_acc", "val_loss", "val_acc", "learning_rate"]
+            + (["stage", "head_learning_rate"] if transfer else []))
         writer.writeheader()
         for epoch in range(1, config["epochs"] + 1):
-            if epoch in starts:
-                # Giai đoạn mới: optimizer, scheduler và bộ đếm dừng sớm bắt đầu lại.
-                optimizer = start_phase(model, config, starts[epoch])
-                scheduler = make_scheduler(optimizer, config, stopping.min_delta)
-                stopping.bad_epochs = 0
-                if len(starts) > 1:
-                    rates = [group["lr"] for group in optimizer.param_groups]
-                    print(f"Giai đoạn {starts[epoch]} | learning rate các nhóm: {rates}", flush=True)
+            if transfer and epoch == config["head_epochs"] + 1:
+                # Fine-tune từ head tốt nhất, không phải epoch head cuối cùng.
+                model.load_state_dict(torch.load(run_dir / "best_model.pth", map_location="cpu",
+                                                 weights_only=True))
+                model.set_finetune(True)
+                optimizer = torch.optim.Adam([
+                    {"params": [p for p in model.features.parameters() if p.requires_grad],
+                     "lr": config["finetune_learning_rate"]},
+                    {"params": model.classifier.parameters(), "lr": config["finetune_head_learning_rate"]},
+                ], weight_decay=config.get("weight_decay", 0.0))
+                summary.update(finetune_start_epoch=epoch, head_best_epoch=summary["best_epoch"])
+            stage = "head" if transfer and epoch <= config["head_epochs"] else "finetune"
             learning_rate = optimizer.param_groups[0]["lr"]
             train_loss, train_acc = train_one_epoch(
                 model, train_loader, loss_fn, optimizer, scaler, device, amp)
             val_loss, val_acc = evaluate_loss_accuracy(model, val_loader, val_loss_fn, device, amp)
             if not all(math.isfinite(v) for v in (train_loss, val_loss)):
                 raise FloatingPointError("Loss không hữu hạn; dừng train.")
-            writer.writerow(dict(epoch=epoch, train_loss=train_loss, train_acc=train_acc,
-                                 val_loss=val_loss, val_acc=val_acc, learning_rate=learning_rate))
+            row = dict(epoch=epoch, train_loss=train_loss, train_acc=train_acc,
+                       val_loss=val_loss, val_acc=val_acc, learning_rate=learning_rate)
+            if transfer:
+                row.update(stage=stage, head_learning_rate=optimizer.param_groups[-1]["lr"])
+            writer.writerow(row)
             file.flush()
             print(f"Epoch {epoch}/{config['epochs']} | train loss {train_loss:.4f}, acc {train_acc:.2%} | "
                   f"val loss {val_loss:.4f}, acc {val_acc:.2%} | lr {learning_rate:.2g}", flush=True)
@@ -246,6 +204,8 @@ def main():
                 best_score = score
                 torch.save(model.state_dict(), run_dir / "best_model.pth")
                 summary.update(best_epoch=epoch, best_val_acc=val_acc, best_val_loss=val_loss)
+                if transfer:
+                    summary["best_stage"] = stage
             if scheduler is not None:
                 scheduler.step(val_loss)
             should_stop = stopping.update(val_loss)
