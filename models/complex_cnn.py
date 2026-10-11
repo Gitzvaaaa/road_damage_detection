@@ -20,13 +20,11 @@ class ConvBlock(nn.Module):
 class ComplexCNN(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
-        self.features = nn.Sequential(
+        self.network = nn.Sequential(
             ConvBlock(3, 16, dropout=0.10),
             ConvBlock(16, 32, dropout=0.15),
             ConvBlock(32, 64, dropout=0.20),
             ConvBlock(64, 128, dropout=0.25),
-        )
-        self.classifier = nn.Sequential(
             nn.AdaptiveAvgPool2d((4, 4)),
             nn.Flatten(),
             nn.Linear(128 * 4 * 4, 256),
@@ -36,4 +34,4 @@ class ComplexCNN(nn.Module):
         )
 
     def forward(self, images):
-        return self.classifier(self.features(images))
+        return self.network(images)
