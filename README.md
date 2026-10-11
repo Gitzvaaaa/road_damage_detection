@@ -68,7 +68,9 @@ Face về `runs/.pretrained/` nên cần mạng.
 ## Đánh giá
 
 ```powershell
+python evaluate.py runs/simple_cnn/run_01
 python evaluate.py runs/complex_cnn/run_01
+python evaluate.py runs/transfer_model/run_01
 ```
 
 Thay đường dẫn bằng run cần đánh giá. Lệnh dùng chung cho cả ba mô hình vì tên mô hình
