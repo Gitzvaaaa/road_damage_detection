@@ -1,53 +1,55 @@
 # Road damage classification
 
-Phân loại ảnh hư hỏng mặt đường (Japan và Czech) thành bốn lớp: `D00`, `D10`, `D20`, `D40`.
-Dự án so sánh ba mô hình dùng chung một luồng train/evaluate: `simple_cnn`,
-`complex_cnn` và `transfer_model`.
+Classifies road damage images (Japan and Czech) into four classes: `D00`, `D10`, `D20`, `D40`.
+The project compares three models that share one train/evaluate pipeline: `simple_cnn`,
+`complex_cnn` and `transfer_model`.
 
-## Môi trường
+## Environment
 
 ```powershell
 conda env create -f environment.yml
 conda activate road_damage_env
 ```
 
-Chạy mọi lệnh từ thư mục gốc dự án. Nếu dùng môi trường cục bộ `.conda/`, thay `python`
-bằng `.\.conda\Scripts\python.exe`. Chỉ `transfer_model` cần `ultralytics` và
+Run every command from the project root. If you use the local `.conda/` environment, replace
+`python` with `.\.conda\Scripts\python.exe`. Only `transfer_model` needs `ultralytics` and
 `huggingface_hub`.
 
-## Dữ liệu
+## Data
 
-Dữ liệu đã xử lý nằm ở `data/processed_classification/`, gồm các crop 224×224:
+The processed data is in `data/processed_classification/` and consists of 224×224 crops:
 
-| Tập | Japan | Czech | Tổng |
+| Split | Japan | Czech | Total |
 |---|---:|---:|---:|
-| train | 7.725 | 1.002 | 8.727 |
-| val | 1.628 | 214 | 1.842 |
-| test | 1.693 | 215 | 1.908 |
+| train | 7,725 | 1,002 | 8,727 |
+| val | 1,628 | 214 | 1,842 |
+| test | 1,693 | 215 | 1,908 |
 
-Dữ liệu được tạo qua hai bước, không cần chạy lại để train:
+The data is created in two steps, which do not need to be rerun for training:
 
-1. `crop_images.ipynb` cắt crop từ ảnh và annotation trong `data/<nước>/`.
-2. `prepare_classification.py` chia train/val/test theo tỉ lệ 70/15/15 cho từng nước và
-   tính mean/std từ tập train. Các crop của cùng một ảnh gốc nằm trong cùng một tập.
+1. `crop_images.ipynb` cuts crops from the images and annotations in `data/<country>/`.
+2. `prepare_classification.py` splits each country into train/val/test at a 70/15/15 ratio and
+   computes the mean/std from the training set. Crops from the same source image stay in the
+   same split.
 
-`EDA.ipynb` chứa phần khám phá dữ liệu.
+`EDA.ipynb` contains the exploratory data analysis.
 
-## Ba mô hình
+## The three models
 
-Kiến trúc nằm trong `models/`, tham số huấn luyện nằm trong `configs/<model>.json`.
+Architectures are in `models/`, training parameters are in `configs/<model>.json`.
 
-| Mô hình | Kiến trúc | Cấu hình train |
+| Model | Architecture | Training configuration |
 |---|---|---|
-| `simple_cnn` | 3 lớp Conv–ReLU–MaxPool, rồi 2 lớp Linear | 10 epoch, batch 32, Adam learning rate 0.001 |
-| `complex_cnn` | 4 block (2 Conv–BatchNorm–ReLU, MaxPool, Dropout), rồi 2 lớp Linear có dropout | Tối đa 100 epoch, batch 32, Adam learning rate 0.001, weight decay 0.0001; giảm learning rate và dừng sớm theo validation loss |
-| `transfer_model` | 10 block đầu của YOLOv8s pretrained trên RDD2022, thêm classifier mới | 3 epoch chỉ train classifier, rồi 15 epoch fine-tune thêm 3 block cuối của backbone; batch 16, label smoothing 0.05 |
+| `simple_cnn` | 3 Conv–ReLU–MaxPool layers, then 2 Linear layers | 10 epochs, batch 32, Adam learning rate 0.001 |
+| `complex_cnn` | 4 blocks (2 Conv–BatchNorm–ReLU, MaxPool, Dropout), then 2 Linear layers with dropout | Up to 100 epochs, batch 32, Adam learning rate 0.001, weight decay 0.0001; learning rate reduction and early stopping based on validation loss |
+| `transfer_model` | First 10 blocks of YOLOv8s pretrained on RDD2022, plus a new classifier | 3 epochs training only the classifier, then 15 epochs fine-tuning the last 3 backbone blocks as well; batch 16, label smoothing 0.05 |
 
-Cả ba dùng chung augmentation khi train (lật ngang, affine, color jitter, perspective,
-blur) và giữ checkpoint có validation accuracy cao nhất. `simple_cnn` và `complex_cnn`
-chuẩn hóa ảnh bằng mean/std của tập train; `transfer_model` dùng ảnh trong khoảng 0–1.
+All three use the same training augmentation (horizontal flip, affine, color jitter,
+perspective, blur) and keep the checkpoint with the highest validation accuracy. `simple_cnn`
+and `complex_cnn` normalize images with the training set mean/std; `transfer_model` uses
+images in the 0–1 range.
 
-## Huấn luyện
+## Training
 
 ```powershell
 python train.py simple_cnn
@@ -55,17 +57,17 @@ python train.py complex_cnn
 python train.py transfer_model
 ```
 
-| Cờ | Ý nghĩa |
+| Flag | Meaning |
 |---|---|
-| `--device cpu\|cuda` | Mặc định dùng CUDA nếu có |
-| `--seed N` | Ghi đè `seed` trong config |
-| `--num-workers N` | Số tiến trình nạp dữ liệu; mặc định 2 trên CUDA, 0 trên CPU |
+| `--device cpu\|cuda` | Uses CUDA by default when available |
+| `--seed N` | Overrides `seed` in the config |
+| `--num-workers N` | Number of data loading workers; default 2 on CUDA, 0 on CPU |
 
-Mỗi lần chạy tạo một thư mục mới `runs/<model>/run_##/` (`run_01`, `run_02`, ...), không
-ghi đè run cũ. Lần train `transfer_model` đầu tiên tải trọng số pretrained từ Hugging
-Face về `runs/.pretrained/` nên cần mạng.
+Each run creates a new folder `runs/<model>/run_##/` (`run_01`, `run_02`, ...) and never
+overwrites an earlier run. The first `transfer_model` training downloads the pretrained
+weights from Hugging Face into `runs/.pretrained/`, so it needs an internet connection.
 
-## Đánh giá
+## Evaluation
 
 ```powershell
 python evaluate.py runs/simple_cnn/run_01
@@ -73,26 +75,26 @@ python evaluate.py runs/complex_cnn/run_01
 python evaluate.py runs/transfer_model/run_01
 ```
 
-Thay đường dẫn bằng run cần đánh giá. Lệnh dùng chung cho cả ba mô hình vì tên mô hình
-và cấu hình được đọc từ `summary.json` của run; có thể thêm `--device cpu|cuda|directml`.
-Chỉ đánh giá trên test sau khi đã chốt mô hình.
+Replace the path with the run to evaluate. The same command works for all three models
+because the model name and configuration are read from the run's `summary.json`; you can add
+`--device cpu|cuda|directml`. Evaluate on the test set only after the model is final.
 
-Sau khi train và đánh giá, mỗi run có 6 file:
+After training and evaluation, each run has 6 files:
 
-| File | Nội dung |
+| File | Content |
 |---|---|
-| `best_model.pth` | Trọng số tại epoch được chọn |
-| `summary.json` | Cấu hình, epoch được chọn và các metric validation/test |
-| `history.csv`, `training_curves.png` | Loss và accuracy train/validation theo epoch |
-| `classification_report.csv` | Precision, recall, F1 từng lớp trên test |
-| `confusion_matrix.png` | Confusion matrix trên test |
+| `best_model.pth` | Weights at the selected epoch |
+| `summary.json` | Configuration, selected epoch and validation/test metrics |
+| `history.csv`, `training_curves.png` | Train/validation loss and accuracy per epoch |
+| `classification_report.csv` | Per-class precision, recall and F1 on the test set |
+| `confusion_matrix.png` | Confusion matrix on the test set |
 
-## Kết quả
+## Results
 
-| Mô hình | Validation accuracy | Test accuracy | Test macro-F1 |
+| Model | Validation accuracy | Test accuracy | Test macro-F1 |
 |---|---:|---:|---:|
-| `simple_cnn` | chưa cập nhật | chưa cập nhật | chưa cập nhật |
-| `complex_cnn` | 85,47 ± 0,69% | 84,75 ± 1,21% | 85,28 ± 1,12% |
-| `transfer_model` | chưa cập nhật | chưa cập nhật | chưa cập nhật |
+| `simple_cnn` | to be updated | to be updated | to be updated |
+| `complex_cnn` | 85.47 ± 0.69% | 84.75 ± 1.21% | 85.28 ± 1.12% |
+| `transfer_model` | to be updated | to be updated | to be updated |
 
-Kết quả là trung bình ± độ lệch chuẩn của ba seed (42, 123, 999).
+Results are the mean ± standard deviation over three seeds (42, 123, 999).

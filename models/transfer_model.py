@@ -57,7 +57,3 @@ class TransferModel(nn.Module):
 
     def forward(self, x):
         return self.classifier(self.features(x))
-
-
-def build_model(num_classes, pretrained=True, hidden_dim=128, dropout=0.5):
-    return TransferModel(num_classes, pretrained, hidden_dim, dropout)

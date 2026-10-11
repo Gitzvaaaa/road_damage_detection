@@ -45,12 +45,11 @@ class EarlyStopping:
         return self.patience > 0 and self.bad_epochs >= self.patience
 
 
-def make_scheduler(optimizer, config, min_delta):
+def make_scheduler(optimizer, config):
     if not config.get("lr_scheduler"):
         return None
     return torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", threshold=min_delta,
-        threshold_mode="abs", **config["lr_scheduler"])
+        optimizer, mode="min", threshold_mode="abs", **config["lr_scheduler"])
 
 
 def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, amp=False):
@@ -141,7 +140,7 @@ def main():
         parameters, lr=config["head_learning_rate"] if transfer else config["learning_rate"],
         weight_decay=config.get("weight_decay", 0.0))
     stopping = EarlyStopping(**({} if transfer else config.get("early_stopping", {})))
-    scheduler = None if transfer else make_scheduler(optimizer, config, stopping.min_delta)
+    scheduler = None if transfer else make_scheduler(optimizer, config)
 
     run_dir = next_run_dir(args.model)
     run_dir.mkdir(parents=True)

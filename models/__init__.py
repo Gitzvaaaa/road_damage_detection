@@ -1,5 +1,6 @@
 """Các kiến trúc dùng cho bài toán phân loại hư hỏng đường."""
 
+from .complex_cnn import ComplexCNN
 from .simple_cnn import SimpleCNN
 
 
@@ -11,14 +12,13 @@ def create_model(model_name, num_classes, config=None, pretrained=True):
     if model_name == "simple_cnn":
         return SimpleCNN(num_classes)
     if model_name == "complex_cnn":
-        from .complex_cnn import build_model
-        return build_model(num_classes)
+        return ComplexCNN(num_classes)
     if model_name == "transfer_model":
-        from .transfer_model import build_model
+        from .transfer_model import TransferModel
         config = config or {}
-        return build_model(num_classes, pretrained=pretrained,
-                           hidden_dim=config.get("hidden_dim", 128),
-                           dropout=config.get("dropout", 0.5))
+        return TransferModel(num_classes, pretrained=pretrained,
+                             hidden_dim=config.get("hidden_dim", 128),
+                             dropout=config.get("dropout", 0.5))
     raise ValueError(f"Không có model: {model_name}")
 
 

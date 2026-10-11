@@ -56,7 +56,7 @@ def main():
     data = make_dataset("test", normalization=summary.get("normalization"))
     if data.classes != summary["classes"]:
         raise ValueError("Thứ tự lớp của test không khớp với checkpoint.")
-    batch_size = args.batch_size or config.get("batch_size", summary.get("batch_size", 32))
+    batch_size = args.batch_size or config["batch_size"]
     loader = DataLoader(data, batch_size=batch_size)
     # pretrained=False: trọng số lấy từ checkpoint, không tải lại backbone.
     model = create_model(summary["model"], len(data.classes), config, pretrained=False)
@@ -99,7 +99,6 @@ def main():
                    evaluation_runtime={"device": str(device), "backend": backend,
                                        "amp": amp, "batch_size": batch_size, "num_workers": 0})
     summary.setdefault("split_sizes", {})["test"] = len(data)
-    summary.pop("test_results_status", None)
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"Test accuracy: {summary['test_acc']:.2%} | Macro-F1: {summary['test_macro_f1']:.2%}")
     print(f"Saved report and confusion matrix: {run_dir}")

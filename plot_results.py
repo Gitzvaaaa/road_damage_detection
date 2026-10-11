@@ -1,4 +1,4 @@
-"""Vẽ loss/accuracy; hỗ trợ vẽ lại confusion matrix từ CSV của run cũ."""
+"""Vẽ loss/accuracy và confusion matrix."""
 
 import csv
 import json
@@ -39,13 +39,7 @@ def plot_history(run_dir):
     plt.close(fig)
 
 
-def plot_confusion(run_dir, matrix=None, classes=None):
-    if matrix is None:
-        with (run_dir / "confusion_matrix.csv").open(newline="", encoding="utf-8") as file:
-            rows = list(csv.reader(file))
-        classes = rows[0][1:]
-        matrix = [[int(value) for value in row[1:]] for row in rows[1:]]
-
+def plot_confusion(run_dir, matrix, classes):
     fig, ax = plt.subplots(figsize=(6, 5))
     image = ax.imshow(matrix, cmap="Blues")
     fig.colorbar(image, ax=ax, label="Number of images")
@@ -72,8 +66,6 @@ def main():
         # evaluate.py truyền ma trận dạng JSON: {"classes": [...], "matrix": [[...]]}.
         confusion = json.loads(sys.argv[2])
         plot_confusion(run_dir, confusion["matrix"], confusion["classes"])
-    elif (run_dir / "confusion_matrix.csv").is_file():
-        plot_confusion(run_dir)
     print(f"Saved plots in {run_dir}")
 
 
