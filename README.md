@@ -28,8 +28,8 @@ Dữ liệu đã xử lý ở `data/processed_classification/`, gồm các thư 
 
 Các bước tạo dữ liệu:
 
-1. `crop_images.ipynb` cắt crop 224×224 từ `data/train/<nước>/images` và
-   `annotations/xmls`, lưu vào `data/train/<nước>/processed_raw/{clean,ambiguous}`.
+1. `crop_images.ipynb` cắt crop 224×224 từ `data/<nước>/images` và
+   `annotations/xmls`, lưu vào `data/<nước>/processed_raw/{clean,ambiguous}`.
    Cell đầu chạy lần lượt mọi nước trong danh sách `countries`.
 2. `prepare_classification.py` chia crop `clean` của từng nước theo tỉ lệ 70/15/15
    (seed 42), gộp vào `data/processed_classification/` và tính mean/std từ train.
