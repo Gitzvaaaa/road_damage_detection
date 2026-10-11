@@ -1,11 +1,6 @@
-"""CNN tự thiết kế với bốn block, huấn luyện từ đầu cho ảnh road damage."""
-
 from torch import nn
 
-
 class ConvBlock(nn.Module):
-    """Hai Conv-BatchNorm-ReLU, sau đó giảm kích thước và regularization."""
-
     def __init__(self, in_channels, out_channels, dropout):
         super().__init__()
         self.layers = nn.Sequential(
@@ -22,10 +17,7 @@ class ConvBlock(nn.Module):
     def forward(self, images):
         return self.layers(images)
 
-
 class ComplexCNN(nn.Module):
-    """8 convolution + 2 fully connected; đầu ra là logits, không softmax."""
-
     def __init__(self, num_classes):
         super().__init__()
         self.features = nn.Sequential(
@@ -34,7 +26,6 @@ class ComplexCNN(nn.Module):
             ConvBlock(32, 64, dropout=0.20),
             ConvBlock(64, 128, dropout=0.25),
         )
-        # Giữ lưới 4x4 để bộ phân loại còn thông tin vị trí/hướng vết nứt.
         self.classifier = nn.Sequential(
             nn.AdaptiveAvgPool2d((4, 4)),
             nn.Flatten(),
@@ -43,18 +34,6 @@ class ComplexCNN(nn.Module):
             nn.Dropout(p=0.5),
             nn.Linear(256, num_classes),
         )
-        self._initialize_weights()
-
-    def _initialize_weights(self):
-        for layer in self.modules():
-            if isinstance(layer, nn.Conv2d):
-                nn.init.kaiming_normal_(layer.weight, mode="fan_out", nonlinearity="relu")
-            elif isinstance(layer, nn.BatchNorm2d):
-                nn.init.ones_(layer.weight)
-                nn.init.zeros_(layer.bias)
-            elif isinstance(layer, nn.Linear):
-                nn.init.normal_(layer.weight, mean=0.0, std=0.01)
-                nn.init.zeros_(layer.bias)
 
     def forward(self, images):
         return self.classifier(self.features(images))

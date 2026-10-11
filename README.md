@@ -63,16 +63,16 @@ python train.py transfer_model
 | `--seed N` | Overrides `seed` in the config |
 | `--num-workers N` | Number of data loading workers; default 2 on CUDA, 0 on CPU |
 
-Each run creates a new folder `runs/<model>/run_##/` (`run_01`, `run_02`, ...) and never
+Each run creates a new folder `runs/<model>/run_###/` (`run_001`, `run_002`, ...) and never
 overwrites an earlier run. The first `transfer_model` training downloads the pretrained
 weights from Hugging Face into `runs/.pretrained/`, so it needs an internet connection.
 
 ## Evaluation
 
 ```powershell
-python evaluate.py runs/simple_cnn/run_01
-python evaluate.py runs/complex_cnn/run_01
-python evaluate.py runs/transfer_model/run_01
+python evaluate.py runs/simple_cnn/run_001
+python evaluate.py runs/complex_cnn/run_001
+python evaluate.py runs/transfer_model/run_001
 ```
 
 Replace the path with the run to evaluate. The same command works for all three models
@@ -94,5 +94,5 @@ After training and evaluation, each run has 6 files:
 | Model | Validation accuracy | Test accuracy | Test macro-F1 |
 |---|---:|---:|---:|
 | `simple_cnn` | to be updated | to be updated | to be updated |
-| `complex_cnn` | 85.47% | 84.75% | 85.28% |
+| `complex_cnn` | to be updated | to be updated | to be updated |
 | `transfer_model` | to be updated | to be updated | to be updated |

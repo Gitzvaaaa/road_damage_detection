@@ -25,7 +25,7 @@ def next_run_dir(model_name):
     model_dir = ROOT / "runs" / model_name
     numbers = [int(p.name[4:]) for p in model_dir.glob("run_*")
                if p.is_dir() and p.name[4:].isdigit()]
-    return model_dir / f"run_{max(numbers, default=0) + 1:02d}"
+    return model_dir / f"run_{max(numbers, default=0) + 1:03d}"
 
 
 class EarlyStopping:
