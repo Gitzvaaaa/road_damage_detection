@@ -46,6 +46,10 @@ def main():
     summary_path = run_dir / "summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     config = summary.get("config", {})
+    if summary["model"] == "transfer_model":
+        from models.transfer_model import ARCHITECTURE
+        if summary.get("architecture") != ARCHITECTURE:
+            parser.error("Checkpoint transfer cũ không khớp YOLOv8s và head mới.")
     backend, device = pick_device(args.device, parser)
     amp = backend == "cuda" and summary.get("runtime", {}).get("amp", False)
     print(f"Device: {device} | AMP: {amp}", flush=True)

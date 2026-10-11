@@ -17,7 +17,7 @@ def create_model(model_name, num_classes, config=None, pretrained=True):
         from .transfer_model import build_model
         config = config or {}
         return build_model(num_classes, pretrained=pretrained,
-                           fine_tune_blocks=config.get("fine_tune_blocks", 3),
+                           hidden_dim=config.get("hidden_dim", 128),
                            dropout=config.get("dropout", 0.5))
     raise ValueError(f"Không có model: {model_name}")
 

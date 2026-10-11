@@ -17,9 +17,9 @@ dependencies:
   - ipykernel
   - pip
   - pip:
-      - torch
-      - torchvision
-      - ultralytics
-      - huggingface_hub
+      - torch==2.6.0
+      - torchvision==0.21.0
+      - ultralytics==8.4.174
+      - huggingface_hub==2.2.0
 
    
