@@ -21,6 +21,23 @@ from models import MODEL_NAMES, create_model, model_normalization
 ROOT = Path(__file__).resolve().parent
 
 
+def pick_device(requested, parser):
+    backend = requested or ("cuda" if torch.cuda.is_available() else "directml")
+    if backend == "directml":
+        try:
+            import torch_directml
+            if not torch_directml.is_available():
+                raise RuntimeError("Không tìm thấy GPU DirectML.")
+            return backend, torch_directml.device()
+        except (ImportError, OSError, RuntimeError) as error:
+            if requested == "directml":
+                parser.error(f"DirectML không khả dụng: {error}. Cần cài torch-directml.")
+            return "cpu", torch.device("cpu")
+    if backend == "cuda" and not torch.cuda.is_available():
+        parser.error("CUDA không khả dụng. Kiểm tra driver và môi trường CUDA.")
+    return backend, torch.device(backend)
+
+
 def next_run_dir(model_name):
     model_dir = ROOT / "runs" / model_name
     numbers = [int(p.name[4:]) for p in model_dir.glob("run_*")
@@ -59,7 +76,7 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, amp=False
     for images, labels in loader:
         images, labels = images.to(device), labels.to(device)
         optimizer.zero_grad(set_to_none=True)
-        with torch.autocast(device_type=device, dtype=torch.float16, enabled=amp):
+        with torch.autocast(device_type="cuda" if amp else "cpu", dtype=torch.float16, enabled=amp):
             outputs = model(images)
             loss = loss_fn(outputs, labels)
         scaler.scale(loss).backward()
@@ -74,10 +91,10 @@ def evaluate_loss_accuracy(model, loader, loss_fn, device, amp=False):
     model.eval()
     total_loss = torch.zeros((), device=device)
     correct = torch.zeros((), dtype=torch.long, device=device)
-    with torch.inference_mode():
+    with torch.no_grad():
         for images, labels in loader:
             images, labels = images.to(device), labels.to(device)
-            with torch.autocast(device_type=device, dtype=torch.float16, enabled=amp):
+            with torch.autocast(device_type="cuda" if amp else "cpu", dtype=torch.float16, enabled=amp):
                 outputs = model(images)
                 loss = loss_fn(outputs, labels)
             total_loss += loss * labels.size(0)
@@ -88,7 +105,7 @@ def evaluate_loss_accuracy(model, loader, loss_fn, device, amp=False):
 def main():
     parser = argparse.ArgumentParser(description="Train a road damage classifier")
     parser.add_argument("model", nargs="?", default="simple_cnn", choices=MODEL_NAMES)
-    parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
+    parser.add_argument("--device", choices=["cpu", "cuda", "directml"], default=None)
     parser.add_argument("--seed", type=int, default=None, help="Ghi đè random seed")
     parser.add_argument("--num-workers", type=int, default=None,
                         help="Number of data loading workers (default: 2 on CUDA, 0 on CPU)")
@@ -107,13 +124,13 @@ def main():
     random.seed(config["seed"])
     np.random.seed(config["seed"])
     torch.manual_seed(config["seed"])
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    amp = device == "cuda" and torch.cuda.get_device_capability()[0] >= 6
-    if device == "cuda":
+    backend, device = pick_device(args.device, parser)
+    amp = backend == "cuda" and torch.cuda.get_device_capability()[0] >= 6
+    if backend == "cuda":
         torch.backends.cudnn.benchmark = True
 
-    num_workers = args.num_workers if args.num_workers is not None else (2 if device == "cuda" else 0)
-    pin_memory = device == "cuda"
+    num_workers = args.num_workers if args.num_workers is not None else (2 if backend == "cuda" else 0)
+    pin_memory = backend == "cuda"
     loader_kwargs = {
         "batch_size": config["batch_size"],
         "num_workers": num_workers,
@@ -138,7 +155,8 @@ def main():
     parameters = model.classifier.parameters() if transfer else model.parameters()
     optimizer = torch.optim.Adam(
         parameters, lr=config["head_learning_rate"] if transfer else config["learning_rate"],
-        weight_decay=config.get("weight_decay", 0.0))
+        weight_decay=config.get("weight_decay", 0.0),
+        foreach=False if backend == "directml" else None)
     stopping = EarlyStopping(**({} if transfer else config.get("early_stopping", {})))
     scheduler = None if transfer else make_scheduler(optimizer, config)
 
@@ -153,7 +171,7 @@ def main():
             "amp": amp,
             "num_workers": num_workers,
             "pin_memory": pin_memory,
-            "cudnn_benchmark": device == "cuda",
+            "cudnn_benchmark": backend == "cuda",
         },
         "checkpoint_monitor": monitor, "status": "training",
     }
@@ -180,7 +198,8 @@ def main():
                     {"params": [p for p in model.features.parameters() if p.requires_grad],
                      "lr": config["finetune_learning_rate"]},
                     {"params": model.classifier.parameters(), "lr": config["finetune_head_learning_rate"]},
-                ], weight_decay=config.get("weight_decay", 0.0))
+                ], weight_decay=config.get("weight_decay", 0.0),
+                   foreach=False if backend == "directml" else None)
                 summary.update(finetune_start_epoch=epoch, head_best_epoch=summary["best_epoch"])
             stage = "head" if transfer and epoch <= config["head_epochs"] else "finetune"
             learning_rate = optimizer.param_groups[0]["lr"]

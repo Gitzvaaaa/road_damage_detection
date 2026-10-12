@@ -55,13 +55,16 @@ images in the 0–1 range.
 python train.py simple_cnn
 python train.py complex_cnn
 python train.py transfer_model
+python train.py transfer_model --device directml --num-workers 0
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--device cpu\|cuda` | Uses CUDA by default when available |
+| `--device cpu\|cuda\|directml` | Defaults to CUDA, then DirectML, then CPU |
 | `--seed N` | Overrides `seed` in the config |
-| `--num-workers N` | Number of data loading workers; default 2 on CUDA, 0 on CPU |
+| `--num-workers N` | Number of data loading workers; default 2 on CUDA, 0 on DirectML/CPU |
+
+DirectML requires `torch-directml` in a separate Python environment from CUDA.
 
 Each run creates a new folder `runs/<model>/run_###/` (`run_001`, `run_002`, ...) and never
 overwrites an earlier run. The first `transfer_model` training downloads the pretrained
