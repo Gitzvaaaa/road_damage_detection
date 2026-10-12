@@ -21,7 +21,7 @@ The processed data is in `data/processed_classification/` and consists of 224×2
 
 | Split | Japan | Czech | Total |
 |---|---:|---:|---:|
-| train | 7,725 | 1,002 | 8,727 |
+| train | 7,725 | 1,002 | 8,727 
 | val | 1,628 | 214 | 1,842 |
 | test | 1,693 | 215 | 1,908 |
 
@@ -55,7 +55,6 @@ images in the 0–1 range.
 python train.py simple_cnn
 python train.py complex_cnn
 python train.py transfer_model
-python train.py transfer_model --device directml --num-workers 0
 ```
 
 | Flag | Meaning |
