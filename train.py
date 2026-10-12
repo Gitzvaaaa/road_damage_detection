@@ -90,7 +90,8 @@ def main():
     config = json.loads((ROOT / "configs" / f"{args.model}.json").read_text(encoding="utf-8"))
     transfer = args.model == "transfer_model"
     if transfer:
-        config["epochs"] = config["head_epochs"] + config["fine_tune_epochs"]
+        config["epochs"] = (config["head_epochs"] + config["fine_tune_epochs"]
+                            + config["final_tune_epochs"])
     if args.batch_size is not None:
         config["batch_size"] = args.batch_size
     if config["epochs"] < 1 or config["batch_size"] < 1:
@@ -142,7 +143,7 @@ def main():
                                  weight_decay=config.get("weight_decay", 0.0),
                                  foreach=False if backend == "directml" else None)
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
-    stopping = EarlyStopping(**({} if transfer else config.get("early_stopping", {})))
+    stopping = EarlyStopping(**config.get("early_stopping", {}))
     scheduler = None
     if config.get("lr_scheduler") and not transfer:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -166,12 +167,27 @@ def main():
         writer = csv.DictWriter(file, fieldnames=[
             "epoch", "train_loss", "train_acc", "val_loss", "val_acc", "learning_rate"])
         writer.writeheader()
+        final_start = config["head_epochs"] + config["fine_tune_epochs"] + 1 if transfer else None
         for epoch in range(1, config["epochs"] + 1):
             if transfer and epoch == config["head_epochs"] + 1:
                 model.unfreeze()
+                optimizer.param_groups[0]["lr"] = config["fine_tune_classifier_learning_rate"]
                 optimizer.add_param_group({
                     "params": [p for p in model.features.parameters() if p.requires_grad],
                     "lr": config["learning_rate"],
+                })
+                if config.get("lr_scheduler"):
+                    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                        optimizer, mode="min", **config["lr_scheduler"])
+            if transfer and epoch == final_start:
+                model.unfreeze(config["final_tune_blocks"])
+                blocks = list(model.features.children())
+                new_blocks = blocks[-config["final_tune_blocks"]:-config["fine_tune_blocks"]]
+                optimizer.param_groups[0]["lr"] = config["final_classifier_learning_rate"]
+                optimizer.param_groups[1]["lr"] = config["final_learning_rate"]
+                optimizer.add_param_group({
+                    "params": [p for block in new_blocks for p in block.parameters()],
+                    "lr": config["new_blocks_learning_rate"],
                 })
                 if config.get("lr_scheduler"):
                     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -196,7 +212,7 @@ def main():
                 summary.update(best_epoch=epoch, best_val_acc=val_acc, best_val_loss=val_loss)
             if scheduler is not None:
                 scheduler.step(val_loss)
-            should_stop = stopping.update(val_loss)
+            should_stop = stopping.update(val_loss) if not transfer or epoch >= final_start else False
             summary.update(completed_epochs=epoch, stopped_early=should_stop and epoch < config["epochs"],
                            stop_reason="validation_loss_plateau" if should_stop else "max_epochs",
                            final_learning_rate=optimizer.param_groups[0]["lr"])
