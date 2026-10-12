@@ -94,5 +94,5 @@ After training and evaluation, each run has 6 files:
 | Model | Validation accuracy | Test accuracy | Test macro-F1 |
 |---|---:|---:|---:|
 | `simple_cnn` | to be updated | to be updated | to be updated |
-| `complex_cnn` | to be updated | to be updated | to be updated |
+| `complex_cnn` | 85.99% | 85.32% | 85.78% |
 | `transfer_model` | to be updated | to be updated | to be updated |
