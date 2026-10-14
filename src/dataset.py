@@ -6,7 +6,7 @@ from pathlib import Path
 from torchvision import datasets, transforms
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data" / "processed_classification"
 
 

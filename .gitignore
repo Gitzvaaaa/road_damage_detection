@@ -9,6 +9,7 @@ __pycache__/
 # Data and training outputs (large files)
 data/
 runs/
+saved_models/
 *.pt
 *.pth
 *.onnx
