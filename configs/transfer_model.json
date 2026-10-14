@@ -1,7 +1,7 @@
 {
   "model": "transfer_model",
   "head_epochs": 3,
-  "finetune_epochs": 15,
+  "finetune_epochs": 30,
   "batch_size": 16,
   "hidden_dim": 128,
   "dropout": 0.5,

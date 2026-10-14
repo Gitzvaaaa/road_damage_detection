@@ -1,9 +1,6 @@
-"""Train/validation và lưu checkpoint tốt nhất; đánh giá test bằng evaluate.py."""
-
 import argparse
 import csv
 import json
-import math
 import random
 import subprocess
 import sys
@@ -21,21 +18,22 @@ from models import MODEL_NAMES, create_model, model_normalization
 ROOT = Path(__file__).resolve().parent
 
 
-def pick_device(requested, parser):
-    backend = requested or ("cuda" if torch.cuda.is_available() else "directml")
-    if backend == "directml":
-        try:
-            import torch_directml
-            if not torch_directml.is_available():
-                raise RuntimeError("Không tìm thấy GPU DirectML.")
-            return backend, torch_directml.device()
-        except (ImportError, OSError, RuntimeError) as error:
-            if requested == "directml":
-                parser.error(f"DirectML không khả dụng: {error}. Cần cài torch-directml.")
-            return "cpu", torch.device("cpu")
-    if backend == "cuda" and not torch.cuda.is_available():
-        parser.error("CUDA không khả dụng. Kiểm tra driver và môi trường CUDA.")
-    return backend, torch.device(backend)
+def pick_device(requested):
+    if requested == "directml":
+        import torch_directml
+        return "directml", torch_directml.device()
+    if requested is not None:
+        return requested, torch.device(requested)
+    if torch.cuda.is_available():
+        return "cuda", torch.device("cuda")
+    # Tự chọn thiết bị: dùng CPU nếu DirectML không khả dụng.
+    try:
+        import torch_directml
+        if torch_directml.is_available():
+            return "directml", torch_directml.device()
+    except (ImportError, OSError, RuntimeError):
+        pass
+    return "cpu", torch.device("cpu")
 
 
 def next_run_dir(model_name):
@@ -46,11 +44,7 @@ def next_run_dir(model_name):
 
 
 class EarlyStopping:
-    """Dừng sau patience epoch không giảm validation loss đủ min_delta."""
-
     def __init__(self, patience=0, min_delta=0.0001):
-        if patience < 0 or min_delta < 0:
-            raise ValueError("patience và min_delta phải >= 0.")
         self.patience, self.min_delta = patience, min_delta
         self.best_loss, self.bad_epochs = float("inf"), 0
 
@@ -67,6 +61,18 @@ def make_scheduler(optimizer, config):
         return None
     return torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", threshold_mode="abs", **config["lr_scheduler"])
+
+
+def finetune(model, checkpoint_path, config, backend):
+    # Fine-tune từ head tốt nhất, không phải epoch head cuối cùng.
+    model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
+    model.set_finetune(True)
+    return torch.optim.Adam([
+        {"params": [parameter for parameter in model.features.parameters() if parameter.requires_grad],
+         "lr": config["finetune_learning_rate"]},
+        {"params": model.classifier.parameters(), "lr": config["finetune_head_learning_rate"]},
+    ], weight_decay=config.get("weight_decay", 0.0),
+       foreach=False if backend == "directml" else None)
 
 
 def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, amp=False):
@@ -116,15 +122,11 @@ def main():
         config["epochs"] = config["head_epochs"] + config["finetune_epochs"]
     if args.seed is not None:
         config["seed"] = args.seed
-    if config["epochs"] < 1 or config["batch_size"] < 1:
-        raise ValueError("epochs và batch_size phải >= 1.")
     monitor = config.get("checkpoint_monitor", "val_acc")
-    if monitor not in ("val_acc", "val_loss"):
-        raise ValueError("checkpoint_monitor phải là val_acc hoặc val_loss.")
     random.seed(config["seed"])
     np.random.seed(config["seed"])
     torch.manual_seed(config["seed"])
-    backend, device = pick_device(args.device, parser)
+    backend, device = pick_device(args.device)
     amp = backend == "cuda" and torch.cuda.get_device_capability()[0] >= 6
     if backend == "cuda":
         torch.backends.cudnn.benchmark = True
@@ -143,8 +145,6 @@ def main():
     normalization = model_normalization(args.model) or load_normalization()
     train_data = make_dataset("train", augment=True, normalization=normalization)
     val_data = make_dataset("val", normalization=normalization)
-    if train_data.classes != val_data.classes:
-        raise ValueError("Tên hoặc thứ tự lớp của train và val không khớp.")
     train_loader = DataLoader(train_data, shuffle=True, **loader_kwargs)
     val_loader = DataLoader(val_data, shuffle=False, **loader_kwargs)
     model = create_model(args.model, len(train_data.classes), config).to(device)
@@ -190,24 +190,13 @@ def main():
         writer.writeheader()
         for epoch in range(1, config["epochs"] + 1):
             if transfer and epoch == config["head_epochs"] + 1:
-                # Fine-tune từ head tốt nhất, không phải epoch head cuối cùng.
-                model.load_state_dict(torch.load(run_dir / "best_model.pth", map_location="cpu",
-                                                 weights_only=True))
-                model.set_finetune(True)
-                optimizer = torch.optim.Adam([
-                    {"params": [p for p in model.features.parameters() if p.requires_grad],
-                     "lr": config["finetune_learning_rate"]},
-                    {"params": model.classifier.parameters(), "lr": config["finetune_head_learning_rate"]},
-                ], weight_decay=config.get("weight_decay", 0.0),
-                   foreach=False if backend == "directml" else None)
+                optimizer = finetune(model, run_dir / "best_model.pth", config, backend)
                 summary.update(finetune_start_epoch=epoch, head_best_epoch=summary["best_epoch"])
             stage = "head" if transfer and epoch <= config["head_epochs"] else "finetune"
             learning_rate = optimizer.param_groups[0]["lr"]
             train_loss, train_acc = train_one_epoch(
                 model, train_loader, loss_fn, optimizer, scaler, device, amp)
             val_loss, val_acc = evaluate_loss_accuracy(model, val_loader, val_loss_fn, device, amp)
-            if not all(math.isfinite(v) for v in (train_loss, val_loss)):
-                raise FloatingPointError("Loss không hữu hạn; dừng train.")
             row = dict(epoch=epoch, train_loss=train_loss, train_acc=train_acc,
                        val_loss=val_loss, val_acc=val_acc, learning_rate=learning_rate)
             if transfer:

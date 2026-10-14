@@ -9,17 +9,13 @@ MODEL_NAMES = ["simple_cnn", "complex_cnn", "transfer_model"]
 
 def create_model(model_name, num_classes, config=None, pretrained=True):
     """config là cấu hình của run; pretrained=False khi sắp nạp checkpoint đã train."""
-    if model_name == "simple_cnn":
-        return SimpleCNN(num_classes)
-    if model_name == "complex_cnn":
-        return ComplexCNN(num_classes)
     if model_name == "transfer_model":
         from .transfer_model import TransferModel
         config = config or {}
         return TransferModel(num_classes, pretrained=pretrained,
                              hidden_dim=config.get("hidden_dim", 128),
                              dropout=config.get("dropout", 0.5))
-    raise ValueError(f"Không có model: {model_name}")
+    return {"simple_cnn": SimpleCNN, "complex_cnn": ComplexCNN}[model_name](num_classes)
 
 
 def model_normalization(model_name):

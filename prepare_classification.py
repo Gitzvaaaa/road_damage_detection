@@ -1,5 +1,3 @@
-"""Chia ảnh clean của từng nước thành train/val/test và tính mean/std từ tập train."""
-
 import csv
 import json
 import shutil
