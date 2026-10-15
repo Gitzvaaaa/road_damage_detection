@@ -1,0 +1,342 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=25mm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\setlength{\emergencystretch}{3em}
+\begin{document}
+% Required packages in the main document: amsmath, amssymb, url.
+% Insert this file inside the document environment with \input{part1_theory}.
+% Local heading format: 1--5, with subheadings 1.1, 1.2, ... .
+\begingroup
+\renewcommand{\thesubsection}{\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+\setcounter{subsection}{0}
+\setcounter{secnumdepth}{3}
+\section*{Part 1: Theory}
+
+\subsection{Convolutional Neural Networks}\label{theory:2.2}
+
+\subsubsection{Overview and Basic Architecture of CNNs}\label{theory:2.2.1}
+
+A CNN is a type of neural network that can mainly classify images. A CNN can find patterns in small areas of an image, and then put those together in many layers. A single filter will only look at a small part of an image, but it can be applied to other parts of the image as well. Since there are fewer connections in a CNN, it has less parameters than a full connected network [1, Chapter 9].
+
+A typical CNN usually comprises convolutional layers, activation functions, pooling layers and a classification layer. Some CNNs also include normalization layers. In the first layers, CNN learns basic features such as edges and textures. In deeper layers, these features are combined to find more complex patterns in the image. One other property of CNNs is that they have a property called translation equivariance. This means that when the input image moves, the feature maps also move in a similar way in some conditions. However, this does not mean that the final prediction will always be the same when the image is moved [1, Ch. 9].
+
+\subsubsection{Convolutional Layer}\label{theory:2.2.2}
+
+An input mini-batch is represented by \(X\in {\mathbb{R}}^{B\times {C}_{\mathrm{in}}\times H\times W}\) where \(B\) is the number of images, \({C}_{\mathrm{in}}\) is the number of input channels and \(H,W\) are the image height and width. A channel is just one 2D part of the tensor. For an RGB image there are three channels and they are red, green, and blue. But inside the hidden layers of a CNN, the channels are not colors anymore and hold features that the network learned by itself. Every output channel makes a feature map and the feature map shows how strongly the learned feature responds at different places in the image [2, Sec. 7.4].
+
+In a standard convolutional layer without grouping, each output filter spans all input channels. For filter weights \(K\in {\mathbb{R}}^{{C}_{\mathrm{out}}\times {C}_{\mathrm{in}}\times {k}_{h}\times {k}_{w}}\), with assumption that the dialtion is 1, the pre-activation output is [2, Secs. 7.2--7.4; 3]:
+
+\[
+{Z}_{n,o,i,j}={b}_{o}+\sum _{c=0}^{{C}_{\mathrm{in}}-1} \sum _{u=0}^{{k}_{h}-1} \sum _{v=0}^{{k}_{w}-1} {K}_{o,c,u,v}\,{\tilde{X}}_{n,c,i{s}_{h}+u,j{s}_{w}+v}
+\]
+
+Here, \(\tilde{X}\) is the zero-padded input; \(n,o,c\) index images, output channels, and input channels; \(i,j\) index output positions; \(u,v\) index kernel positions; and \({s}_{h},{s}_{w}\) control the filter displacement. Deep learning libraries calles this operation convolution, although it is mathematically cross-correlation because the kernel is not reversed [3].
+
+Each of the \({C}_{\mathrm{out}}\) filters produces one feature map by summing its responses over all input channels. Hence, if the padding amounts are \({p}_{h},{p}_{w}\), the heigth and width of feature maps correspondingly calculated by:
+
+\[
+{H}_{\mathrm{out}}=\lfloor \frac{H+2{p}_{h}-{k}_{h}}{{s}_{h}}\rfloor +1,\quad {W}_{\mathrm{out}}=\lfloor \frac{W+2{p}_{w}-{k}_{w}}{{s}_{w}}\rfloor +1
+\]
+
+\subsubsection{Activation Functions}\label{theory:2.2.3}
+
+Activation functions introduce nonlinearity into the network in oder to preventing model from being  equivalent to a single affine transformation. Common elementwise activation functions are [1, Sec. 6.3]:
+
+\[
+\mathrm{ReLU}(z)=\max (0,z),\quad \sigma (z)=\frac{1}{1+{e}^{-z}},\quad \tanh (z)=\frac{{e}^{z}-{e}^{-z}}{{e}^{z}+{e}^{-z}}
+\]
+
+In modern neural network architectures, ReLU is the best common choice on account of its inexpensive property and unit derivation for positive inputs combining with saturation and small gradients of Sigmoid and Tanh. And it also was choosen in this project.
+
+\subsubsection{Pooling Layer}\label{theory:2.2.4}
+
+Pooling summarizes spatial neighborhood information, reduces the size of following feature tensors usually by maintaining the number of channels, while decreasing the height and width of each channel. For a pooling region \({\mathcal{R}}_{i,j}\), max pooling and average pooling are two common types and are respectively defined as [1, Sec. 9.3]:
+
+\[
+{P}_{n,c,i,j}^{\max }={\max }_{(u,v)\in {\mathcal{R}}_{i,j}}{A}_{n,c,u,v}
+\]
+
+\[
+{P}_{n,c,i,j}^{\mathrm{avg}}=\frac{1}{\left| {\mathcal{R}}_{i,j}\right| }\sum _{(u,v)\in {\mathcal{R}}_{i,j}} {A}_{n,c,u,v}
+\]
+
+In the same region, the former will retain the most prominent response, while the latter will combine all responses into a single summary. Both pooling methods can alleviate sensitivity to small local distortions, while losing spatial information [2, Sec. 7.5]. Our project typically uses max poolings after convolution layers, and global average pooling reduces each feature map to a single value before multi-layer perceptron.
+
+\subsubsection{Fully Connected Layer and Softmax}\label{theory:2.2.5}
+
+Flattening or pooling converts extracted feature maps into a vector \(\boldsymbol{a}\) before fully connected layers with acitvation functions combine these features through a nonlinear transformation and produces one logit for each of the \(M\) classes [1, Ch. 6]:
+
+\[
+\boldsymbol{z}={W}_{\mathrm{fc}}\boldsymbol{a}+{\boldsymbol{b}}_{\mathrm{fc}},\quad {p}_{k}=\frac{\exp ({z}_{k})}{\sum _{j=1}^{M} \exp ({z}_{j})},\quad \hat{y}=\mathrm{arg}{\max }_{k}{p}_{k}
+\]
+
+With multiclass classification, softmax which have ability to convert logits into probabilities that sum to one is an appropriate decision because the classes are mutually exclusive. The project returns logits directly and passes them to PyTorch CrossEntropyLoss, which contains log-softmax, so that no softmax layer is needed during training [12; 13].
+
+\subsubsection{Batch Normalization}\label{theory:2.2.6}
+
+Batch normalization (BN) normalizes activations separately for each channel. For \(X\in {\mathbb{R}}^{B\times C\times H\times W}\), training statistics are computed over the batch and all spatial positions, not across channels [4, Algorithm 1 and Sec. 3.2] and retained for calculation in inference :
+
+\[
+{\mu }_{c}=\frac{1}{BHW}\sum _{n=1}^{B} \sum _{h=1}^{H} \sum _{w=1}^{W} {X}_{n,c,h,w}
+\]
+
+\[
+{\sigma }_{c}^{2}=\frac{1}{BHW}\sum _{n=1}^{B} \sum _{h=1}^{H} \sum _{w=1}^{W} ({X}_{n,c,h,w}-{\mu }_{c}{)}^{2}
+\]
+
+\[
+{Y}_{n,c,h,w}={\gamma }_{c}\frac{{X}_{n,c,h,w}-{\mu }_{c}}{\sqrt{{\sigma }_{c}^{2}+\epsilon }}+{\beta }_{c}
+\]
+
+Each channel has a learned scale \({\gamma }_{c}\) and shift \({\beta }_{c}\); \(\epsilon >0\) to ensure numerical stability. The project uses Conv--BN--ReLU blocks in complex model, where batch normalization helps stabilize training and improve optimization without removing correlations between channels or performing full whitening.
+
+\subsection{CNN Training and Optimization}\label{theory:2.3}
+
+\subsubsection{Forward Propagation and Loss Function}\label{theory:2.3.1}
+
+Forward propagation transforms an input mini-batch through the network to obtain logits and class probabilities.
+
+For \(B\) examples and \(M\) classes, the mean categorical cross-entropy loss is [1, Sec. 6.2; 13]:
+
+\[
+{\mathcal{L}}_{\mathcal{B}}(\theta )=-\frac{1}{B}\sum _{n=1}^{B} \sum _{k=1}^{M} {y}_{n,k}\log {p}_{n,k}(\theta )
+\]
+
+The one-hot target \({y}_{n,k}\) equals 1 for the correct class and 0 otherwise; \({p}_{n,k}\) is the predicted probability with trainable parameters \(\theta .\) Each sample contributes the negative logarithm of the probability assigned to its correct class, so minimizing loss encourages larger probabilities for the observed labels.
+
+\subsubsection{Backpropagation and Mini-Batch Gradient Descent}\label{theory:2.3.2}
+
+Backpropagation is a techique used to compute gradient in optimizers in order to tackle the problem of parameter's explosion. It takes advantage of chain rule from the loss toward earlier layers. For the mean softmax cross-entropy loss above, the gradient with respect to each output logit is:
+
+\[
+\frac{\partial {\mathcal{L}}_{\mathcal{B}}}{\partial {z}_{n,k}}=\frac{{p}_{n,k}-{y}_{n,k}}{B}
+\]
+
+Consider the cross-correlation in Section~\ref{theory:2.2.2} with unit stride, unit dilation, and no padding, let \({\delta }_{n,o,i,j}=\partial {\mathcal{L}}_{\mathcal{B}}/\partial {Z}_{n,o,i,j}\) be the gradient arriving at its pre-activation output and applying the chain rule gives:
+
+\[
+\frac{\partial {\mathcal{L}}_{\mathcal{B}}}{\partial {K}_{o,c,u,v}}=\sum _{n,i,j} {\delta }_{n,o,i,j}{X}_{n,c,i+u,j+v},\quad \frac{\partial {\mathcal{L}}_{\mathcal{B}}}{\partial {b}_{o}}=\sum _{n,i,j} {\delta }_{n,o,i,j}
+\]
+
+\[
+\frac{\partial {\mathcal{L}}_{\mathcal{B}}}{\partial {X}_{n,c,h,w}}=\sum _{o} \sum _{u} \sum _{v} {K}_{o,c,u,v}\,{\delta }_{n,o,h-u,w-v}
+\]
+
+The sums are over valid batch, spatial, and kernel indices; in the input-gradient formula, \(\delta\) is zero outside its valid output range. The kernel gradient accumulates contributions from every position where the shared weight was used, and the input gradient carries the error to previous layers. These expressions amount to applying the chain rule to the particular convolution; the \(1/B\) factor is already incorporated into \(\delta\) and therefore must not be applied again [1, Sec. 6.5 and Ch. 9; 2, Sec. 5.3].
+
+For a ReLU applied directly to \(Z\), the local backward rule is:
+
+\[
+\delta =\frac{\partial {\mathcal{L}}_{\mathcal{B}}}{\partial A}\odot \boldsymbol{1}[Z>0],\quad A=\mathrm{ReLU}(Z)
+\]
+
+\(\odot \) denotes elementwise multiplication.
+
+In Conv--BN--ReLU blocks, the gradient must also pass through BN before reaching the convolution. Max pooling routes the gradient to the selected maximum in each window; overlapping windows contribute additively [2, Sec. 5.3; 4].
+
+Mini-batch training uses a small batch at each update rather than computing a full-dataset gradient with formular
+
+\[
+{g}_{t}={\nabla }_{\theta }{\mathcal{L}}_{{\mathcal{B}}_{t}}({\theta }_{t}),\quad {\theta }_{t+1}={\theta }_{t}-{\eta }_{t}{g}_{t}
+\]
+
+The learning rate \({\eta }_{t}\) controls the step size. The project uses shuffled mini-batches and applies Adam to their gradients [12].
+
+\subsubsection{Optimization Algorithms}\label{theory:2.3.3}
+
+Adam (Adaptive Moment Estimation) is an optimization algorithm combining Momentum and RMSProp. It uses dynamic average of gradient and square gradient to regulate learning rate for each parameter that accelerate rate of convergence and stabilize training progress.
+
+From mini-batch gradient \({g}_{t}\), two moment parameters are contructed:
+
+All vector multiplications, squares, square roots, and divisions in the following equations are performed elementwise.[5].
+
+\[
+{m}_{t}={\beta }_{1}{m}_{t-1}+(1-{\beta }_{1}){g}_{t},\quad {m}_{0}=0
+\]
+
+\[
+{v}_{t}={\beta }_{2}{v}_{t-1}+(1-{\beta }_{2}){g}_{t}^{2},\quad {v}_{0}=0
+\]
+
+The first moment \({m}_{t}\) smooths the gradient direction and, the second raw moment \({v}_{t}\) (non centered variance) tracks squared gradient magnitudes. Inside these, \({\beta }_{1}, {\beta }_{2}\) controls how the part informations to be retained. At the first step, both moment are estimated at zero, so bias corrections are applied to compensate this initialization.
+
+\[
+{\hat{m}}_{t}=\frac{{m}_{t}}{1-{\beta }_{1}^{t}},\quad {\hat{v}}_{t}=\frac{{v}_{t}}{1-{\beta }_{2}^{t}}
+\]
+
+Model parameters are updated by formular:
+
+\[
+{\theta }_{t+1}={\theta }_{t}-{\eta }_{t}\frac{{\hat{m}}_{t}}{\sqrt{{\hat{v}}_{t}}+\epsilon }
+\]
+
+In this formular, the corrected first moment determines the update direction and the denominator adapts its scale for each parameter along with the learning rate \({\eta }_{t}\) , stabilizing division factor \(\epsilon >0\).
+
+\subsubsection{Overfitting and Regularization}\label{theory:2.3.4}
+
+Overfitting happens when a model fits the training data more than desired, for instance, indicated by a widening gap between training and validation performance. This issue has been extensively studied and various approaches including loss regularzation, drop out,etc were proposed to deal with it.
+
+Regularization helps prevent overfitting by enforcing constraints during learning or adding noise to the training process [1, Ch. 7]. The project passes weight\_decay to Adam, which penalizes the L2 norm of the weights in the current setup, corresponding to \(\lambda \theta \) in the gradient [14]
+
+\[
+{\mathcal{J}}_{\mathcal{B}}(\theta )={\mathcal{L}}_{\mathcal{B}}(\theta )+\frac{\lambda }{2}\Vert \theta {\Vert }_{2}^{2}
+\]
+
+Dropout is a regularization method that randomly deactivates a neuron with some probability and compensates for the expected drop by scaling up the active neurons during training, improving the generalization of the model. With dropout probability q, inverted dropout scales the activations by \(1/(1-q)\) to maintain the expected magnitude:
+
+\[
+{\tilde{a}}_{i}=\frac{{r}_{i}{a}_{i}}{1-q},\quad {r}_{i}\sim \mathrm{Bernoulli}(1-q),\quad 0\le q<1
+\]
+
+In our project, complex model uses channel-wise Dropout2d in convolutional blocks and ordinary dropout in the classifier.
+
+\subsection{Model Evaluation Metrics}\label{theory:2.4}
+
+\subsubsection{Multiclass Confusion Matrix}\label{theory:2.4.1}
+
+For \(M\) mutually exclusive classes, the confusion matrix \(C\in {\mathbb{N}}_{0}^{M\times M}\) counts predictions by true class and predicted class, in which rows correspond to true labels and columns to predicted labels [7]:
+
+\[
+{C}_{i,j}=\sum _{n=1}^{N} \boldsymbol{1}[{y}_{n}=i,\,{\hat{y}}_{n}=j]
+\]
+
+Here, \(N\) is the number of evaluated images. Diagonal entries count correct predictions, while off-diagonal entries identify specific confusions. In the project, the fixed order is D00, D10, D20, and D40, giving the following four-class structure [12]:
+
+\[
+C=\left[ \begin{matrix}{C}_{1,1} & {C}_{1,2} & {C}_{1,3} & {C}_{1,4} \\ {C}_{2,1} & {C}_{2,2} & {C}_{2,3} & {C}_{2,4} \\ {C}_{3,1} & {C}_{3,2} & {C}_{3,3} & {C}_{3,4} \\ {C}_{4,1} & {C}_{4,2} & {C}_{4,3} & {C}_{4,4}\end{matrix}\right] 
+\]
+
+\subsubsection{Accuracy and Multiclass Precision Recall and F1 Score}\label{theory:2.4.2}
+
+Overall accuracy assesses model performance by calculating the fraction of images classified correctly on the test set:
+
+\[
+\mathrm{Accuracy}=\frac{\sum _{k=1}^{M} {C}_{k,k}}{N},\quad N=\sum _{i=1}^{M} \sum _{j=1}^{M} {C}_{i,j}
+\]
+
+For each class \(k\), a one-versus-rest view defines its true positives, false positives, false negatives, and support:
+
+\[
+{\mathrm{TP}}_{k}={C}_{k,k},\quad {\mathrm{FP}}_{k}=\sum _{i\ne k} {C}_{i,k},\quad {\mathrm{FN}}_{k}=\sum _{j\ne k} {C}_{k,j}
+\]
+
+\[
+{P}_{k}=\frac{{\mathrm{TP}}_{k}}{{\mathrm{TP}}_{k}+{\mathrm{FP}}_{k}},\quad {R}_{k}=\frac{{\mathrm{TP}}_{k}}{{\mathrm{TP}}_{k}+{\mathrm{FN}}_{k}},\quad {F}_{1,k}=\frac{2{\mathrm{TP}}_{k}}{2{\mathrm{TP}}_{k}+{\mathrm{FP}}_{k}+{\mathrm{FN}}_{k}}
+\]
+
+Precision measures how often predictions of class \(k\) are correct, whereras Recall measures how many actual examples of that class are recovered and F1 combines them through their harmonic mean. Our project uses zero\_division=0 to solve the problem of zero denominator [7; 12].
+
+For \({Q}_{k}\in \{{P}_{k},{R}_{k},{F}_{1,k}\}\):
+
+\[
+{Q}_{\mathrm{macro}}=\frac{1}{M}\sum _{k=1}^{M} {Q}_{k}
+\]
+
+Alongside overall accuracy, the project reports per-class, macro score which is the average of per-class scores to expose weak minority-class performance that accuracy can conceal [7].
+
+\subsubsection{Training and Validation Loss and Early Stopping}\label{theory:2.4.3}
+
+The training loss reflects learning progress on the training set, whereas the validation loss generalizes performance on the unseen examples without the dropout layer and with running statistics.
+
+\[
+{ L}_{\mathrm{val}}^{\left( t\right) }=-\frac{1}{{N}_{\mathrm{val}}}\sum _{n=1}^{{N}_{\mathrm{val}}} \log {p}_{n,{y}_{n}}^{\left( t\right) }
+\]
+
+A continually decreasing training loss and increasing validation loss is indicative of overfitting, though individual fluctuations are not necessarily concerning, and the training loss can temporarily exceed the validation loss due to the dropout and augmentations. In addition to the regularization techniques mentioned in Section~\ref{theory:2.3.4}, early stopping is also a common approach to prevent overfitting by terminating the training process when the validation loss stops improving.
+
+The project adopts early stopping with min\_delta and patience as the key parameters, where the former specifies the minimum loss reduction for the validation set and the latter defines the number of consecutive epochs with insufficient loss reduction. In this procedure, early stopping and checkpoint selection are decoupled; the current setup saves the best validation-accuracy checkpoint by comparing the validation losses.
+
+\subsection{Representative CNN Architectures}\label{theory:2.5}
+
+\subsubsection{LeNet}\label{theory:2.5.1}
+
+LeNet-5 initially is an CNN architecture for handwritten character recognition which takes 32\(\times\)32 grayscale input pixels. Its C1 layer generates six feature maps, S2 halves their spatial dimensions, and C3 extracts 16 feature maps, followed by further subsampling in S4 and the combination of spatial features in C5, and finally the F6 layer and the output stage [8].
+
+The original network uses sigmoid activation functions and trainable downsampling with a radial-basis output layer, whereas modern implementations typically utilize ReLU, standard pooling, and a softmax classifier instead. LeNet represents the basic CNN pattern of feature extraction, spatial downsampling, and classification [8].
+
+\subsubsection{VGG}\label{theory:2.5.2}
+
+VGG makes extensive use of 3\(\times\)3 convolutions with stride 1 and padding that preserves spatial resolution within each block. Max pooling with 2\(\times\)2 window and stride 2 is applied after each block to downsample the spatial dimensions. VGG-16 has 13 convolutional and three fully connected weight layers, while VGG-19 has 16 convolutional and three fully connected weight layers. The stacked 3\(\times\)3 convolutional layers increase the network depth and thus the receptive field, at the cost of a high number of parameters, especially in the fully connected heads [9].
+
+\subsubsection{ResNet}\label{theory:2.5.3}
+
+ResNet introduces residual blocks to ease the optimization of deep networks. A block learns a residual transformation \(F(\boldsymbol{x};W)\) and adds a shortcut from its input [10]:
+
+\[
+\boldsymbol{y}=F(\boldsymbol{x};W)+\boldsymbol{x}
+\]
+
+When the spatial dimensions or channel counts differ, a projection \({W}_{s}\), commonly implemented by a \(1\times 1\) convolution with a suitable stride, matches the shortcut to the residual output:
+
+\[
+\boldsymbol{y}=F(\boldsymbol{x};W)+{W}_{s}\boldsymbol{x}
+\]
+
+The addition provides a direct path for information and gradients, allowing the block to learn a change to its input representation. ResNet-18 and ResNet-34 utilize the basic blocks, whereas deeper variants, such as ResNet-50, apply the bottleneck design with 1\(\times\)1, 3\(\times\)3, and 1\(\times\)1 convolutions [10].
+
+\subsection{Techniques for Improving CNN Performance}\label{theory:2.6}
+
+\subsubsection{Transfer Learning}\label{theory:2.6.1}
+
+Transfer learning aims to build a classifier from a CNN pretrained on one domain (e.g., ImageNet). The weights of the CNN backbone are typically frozen while the final classification head is replaced with a new layer that has one logit per class in the current task. For the four-class classification, the new head thus has four logits [11].
+
+In a feature extraction setting, the CNN backbone is frozen and only the new head is trained while, in a fine-tuning setup, certain layers of the CNN or the entire backbone are unfrozen and trained with a lower learning rate than the new head. Proper vision pretrained models usually require specific input augmentation, such as color standardization, to match the preprocessing used during training. If the CNN backbone is kept frozen, its BatchNorm running statistics should also be frozen [4; 11].
+
+\subsubsection{Data Augmentation}\label{theory:2.6.2}
+
+Data augmentation (DA) typically refers to applying randomized transforms that make the training samples more diverse while preserving their label, such as flips, affine transforms, and photometric adjustments that can be found in real-world imagery. The transforms should not alter the label, however, large rotations can turn a road crack to a different direction and thus change the label [1, Sec. 7.4].
+
+The project applies online horizontal flips, small affine transforms, color jittering, occasional perspective warping, and Gaussian blurring before the conversion to tensors and normalization, which are only applied to the training set. The validation and test sets undergo only the conversions and normalization with statistics from the training set, which ensures consistency while avoiding contamination of the test distribution with validation or training statistics [12].
+
+\subsection*{References}
+\begin{list}{}{\setlength{\leftmargin}{2.5em}\setlength{\labelwidth}{2em}\setlength{\labelsep}{0.5em}\setlength{\itemsep}{0.5em}}
+
+\item[[1]] I. Goodfellow, Y. Bengio, and A. Courville, Deep Learning. MIT Press, 2016. Chapters 5--9.
+\url{https://www.deeplearningbook.org/}
+
+\item[[2]] A. Zhang, Z. C. Lipton, M. Li, and A. J. Smola, Dive into Deep Learning. Cambridge University Press, 2023. Online edition, Sections 5.3 and 7.2--7.5.
+\url{https://d2l.ai/}
+
+\item[[3]] PyTorch contributors, ``Conv2d,'' PyTorch documentation. Accessed October 10, 2026.
+\url{https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html}
+
+\item[[4]] S. Ioffe and C. Szegedy, ``Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift,'' in Proceedings of the 32nd International Conference on Machine Learning, vol. 37, pp. 448--456, 2015. Algorithm 1 and Section 3.2.
+\url{https://proceedings.mlr.press/v37/ioffe15.html}
+
+\item[[5]] D. P. Kingma and J. Ba, ``Adam: A Method for Stochastic Optimization,'' International Conference on Learning Representations, 2015.
+\url{https://arxiv.org/abs/1412.6980}
+
+\item[[6]] N. Srivastava, G. Hinton, A. Krizhevsky, I. Sutskever, and R. Salakhutdinov, ``Dropout: A Simple Way to Prevent Neural Networks from Overfitting,'' Journal of Machine Learning Research, vol. 15, no. 56, pp. 1929--1958, 2014.
+\url{https://jmlr.org/papers/v15/srivastava14a.html}
+
+\item[[7]] Scikit-learn developers, ``Metrics and scoring: quantifying the quality of predictions,'' Scikit-learn User Guide. Accessed October 10, 2026.
+\url{https://scikit-learn.org/stable/modules/model_evaluation.html}
+
+\item[[8]] Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner, ``Gradient-based learning applied to document recognition,'' Proceedings of the IEEE, vol. 86, no. 11, pp. 2278--2324, 1998. DOI: 10.1109/5.726791.
+\url{https://bottou.org/papers/lecun-98h}
+
+\item[[9]] K. Simonyan and A. Zisserman, ``Very Deep Convolutional Networks for Large-Scale Image Recognition,'' International Conference on Learning Representations, 2015.
+\url{https://arxiv.org/abs/1409.1556}
+
+\item[[10]] K. He, X. Zhang, S. Ren, and J. Sun, ``Deep Residual Learning for Image Recognition,'' in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 770--778, 2016.
+\url{https://arxiv.org/abs/1512.03385}
+
+\item[[11]] Stanford University, ``Transfer Learning,'' CS231n course notes. Accessed October 10, 2026.
+\url{https://cs231n.github.io/transfer-learning/}
+
+\item[[12]] Road damage classification project, local source code and configuration: train.py, evaluate.py, dataset.py, models/complex\_cnn.py, and configs/complex\_cnn.json. Implementation inspected October 10, 2026.
+
+\item[[13]] PyTorch contributors, ``CrossEntropyLoss,'' PyTorch documentation. Accessed October 10, 2026.
+\url{https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html}
+
+\item[[14]] PyTorch contributors, ``Adam,'' PyTorch documentation. Accessed October 10, 2026.
+\url{https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html}
+
+\end{list}
+
+\endgroup
+\end{document}

@@ -1,0 +1,64 @@
+3
+2.2.6. Batch Normalization
+Batch normalization (BN) normalizes activations separately for each channel. For 𝑋 ∈ ℝ𝐵×𝐶×𝐻×𝑊, 
+training statistics are computed over the batch and all spatial positions, not across channels [4, 
+Algorithm 1 and Sec. 3.2]:
+𝜇𝑐 =
+1
+𝐵𝐻𝑊∑ ∑ ∑ 𝑋𝑛,𝑐,ℎ,𝑤
+𝑊
+𝑤=1
+𝐻
+ℎ=1
+𝐵
+𝑛=1
+𝜎𝑐
+2 =
+1
+𝐵𝐻𝑊∑ ∑ ∑ (
+𝑊
+𝑤=1
+𝐻
+ℎ=1
+𝐵
+𝑛=1
+𝑋𝑛,𝑐,ℎ,𝑤 − 𝜇𝑐)
+2
+𝑌𝑛,𝑐,ℎ,𝑤 = 𝛾𝑐
+𝑋𝑛,𝑐,ℎ,𝑤 − 𝜇𝑐
+√𝜎𝑐
+2 + 𝜖
++ 𝛽𝑐
+Each channel has a learned scale 𝛾𝑐 and shift 𝛽𝑐
+; 𝜖 > 0 ensures numerical stability. During 
+inference, stored running statistics replace the current batch statistics. The project uses Conv–BN–
+ReLU blocks. This normalization supports optimization but does not decorrelate channels or perform 
+full whitening [4; 12].
+2.3. CNN Training and Optimization
+2.3.1. Forward Propagation and Loss Function
+Forward propagation transforms an input mini-batch through the network to obtain logits and class 
+probabilities. For 𝐵 examples and 𝑀 classes, the mean categorical cross-entropy loss is [1, Sec. 6.2; 
+13]:
+ℒℬ(𝜃) = −
+1
+𝐵
+∑ ∑ 𝑦𝑛,𝑘
+𝑀
+𝑘=1
+𝐵
+𝑛=1
+log𝑝𝑛,𝑘(𝜃)
+The one-hot target 𝑦𝑛,𝑘 equals 1 for the correct class and 0 otherwise; 𝑝𝑛,𝑘 is the predicted 
+probability, and 𝜃 contains the trainable parameters. Thus, each example contributes the negative 
+logarithm of the probability assigned to its correct class. Minimizing this loss encourages larger 
+probabilities for the observed labels. Integer class labels can be used directly in the implementation 
+without explicitly creating one-hot vectors [13].
+2.3.2. Backpropagation and Mini-Batch Gradient Descent
+Backpropagation applies the chain rule from the loss toward earlier layers. It computes gradients; 
+the optimizer then uses those gradients to update parameters. For the mean softmax cross-entropy 
+loss above, the gradient with respect to each output logit is:
+𝜕ℒℬ
+𝜕𝑧𝑛,𝑘
+=
+𝑝𝑛,𝑘 − 𝑦𝑛,𝑘
+𝐵

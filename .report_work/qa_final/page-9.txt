@@ -1,0 +1,14 @@
+9
+weights, and the amount of fine-tuning is selected using validation performance. If the backbone is 
+intended to remain fixed, its BN running statistics must also remain fixed [11].
+2.6.2. Data Augmentation
+Data augmentation generates varied training inputs through transformations intended to preserve 
+class identity. Random flips, modest geometric changes, and photometric changes expose the 
+model to variations that may occur in unseen images. Transformations must remain appropriate to 
+the task; for example, large rotations can change the directional meaning of a road crack [1, Sec. 
+7.4].
+The project applies online horizontal flipping, small affine transformations, color jitter, occasional 
+perspective distortion, and Gaussian blur before tensor conversion and normalization. Augmentation 
+is restricted to training images. Validation and test images receive only tensor conversion and 
+normalization, using statistics computed from the training set. This preserves a consistent evaluation 
+procedure and avoids using validation or test statistics to prepare the training inputs [12].

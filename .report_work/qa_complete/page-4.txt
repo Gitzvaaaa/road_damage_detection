@@ -1,0 +1,66 @@
+4
+To illustrate the backward pass of a convolution, consider the cross-correlation in Section 2.2.2 with 
+unit stride, unit dilation, and no padding. Let 𝛿𝑛,𝑜,𝑖,𝑗 = 𝜕ℒℬ/𝜕𝑍𝑛,𝑜,𝑖,𝑗 be the gradient arriving at its pre￾activation output. Applying the chain rule gives:
+𝜕ℒℬ
+𝜕𝐾𝑜,𝑐,𝑢,𝑣
+= ∑ 𝛿𝑛,𝑜,𝑖,𝑗
+𝑛,𝑖,𝑗
+𝑋𝑛,𝑐,𝑖+𝑢,𝑗+𝑣
+,
+𝜕ℒℬ
+𝜕𝑏𝑜
+= ∑ 𝛿𝑛,𝑜,𝑖,𝑗
+𝑛,𝑖,𝑗
+𝜕ℒℬ
+𝜕𝑋𝑛,𝑐,ℎ,𝑤
+= ∑ ∑ ∑ 𝐾𝑜,𝑐,𝑢,𝑣
+𝑜 𝑢 𝑣
+𝛿𝑛,𝑜,ℎ−𝑢,𝑤−𝑣
+The sums cover valid batch, spatial, and kernel indices; in the input-gradient formula, 𝛿 is zero 
+outside its valid output range. The kernel gradient accumulates contributions from every location 
+where the shared weight was used. The input gradient carries the error to earlier layers. These 
+equations specialize the chain rule to the stated convolution; the factor 1⁄𝐵 is already included in 𝛿
+and must not be applied again [1, Sec. 6.5 and Ch. 9; 2, Sec. 5.3].
+For a ReLU applied directly to 𝑍, the local backward rule is:
+𝛿 =
+𝜕ℒℬ
+𝜕𝐴 ⊙ 𝟏[𝑍 > 0], 𝐴 = Re LU(𝑍)
+Here, ⊙ denotes elementwise multiplication. In Conv–BN–ReLU blocks, the gradient must also pass 
+through BN before reaching the convolution. Max pooling routes the gradient to the selected 
+maximum in each window; overlapping windows contribute additively [2, Sec. 5.3; 4].
+Mini-batch training uses a small batch at each update rather than computing a full-dataset gradient. 
+The basic mini-batch SGD update is:
+𝑔𝑡 = 𝛻𝜃ℒℬ𝑡
+(𝜃𝑡), 𝜃𝑡+1 = 𝜃𝑡 − 𝜂𝑡𝑔𝑡
+The learning rate 𝜂𝑡 controls the step size. The project uses shuffled mini-batches and applies Adam 
+to their gradients [12].
+2.3.3. Optimization Algorithms
+Adam uses the mini-batch gradient 𝑔𝑡
+to update each parameter through running moment estimates. 
+All vector products, squares, square roots, and divisions below are elementwise [5].
+𝑚𝑡 = 𝛽1𝑚𝑡−1 + (1 − 𝛽1)𝑔𝑡
+, 𝑚0 = 0
+The first moment 𝑚𝑡 smooths the gradient direction; 𝛽1 controls how much past information is 
+retained.
+𝑣𝑡 = 𝛽2𝑣𝑡−1 + (1 − 𝛽2)𝑔𝑡
+2
+, 𝑣0 = 0
+The second raw moment 𝑣𝑡
+tracks squared gradient magnitudes. It is not a centered variance. The 
+decay factor 𝛽2 controls its memory.
+𝑚̂𝑡 =
+𝑚𝑡
+1 − 𝛽1
+𝑡
+, 𝑣̂𝑡 =
+𝑣𝑡
+1 − 𝛽2
+𝑡
+Bias correction compensates for initializing both moment estimates at zero.
+𝜃𝑡+1 = 𝜃𝑡 − 𝜂𝑡
+𝑚̂𝑡
+√𝑣̂𝑡 + 𝜖
+The corrected first moment determines the update direction, while the denominator adapts its scale 
+for each parameter. The learning rate 𝜂𝑡 sets the overall step size, and 𝜖 > 0 stabilizes division. 
+When an L2 penalty is used, 𝑔𝑡
+includes its gradient [5; 12].

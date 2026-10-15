@@ -1,0 +1,22 @@
+const fs = require('fs');
+const root = 'C:/Users/ASUS/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/';
+const {mathjax} = require(root+'mathjax-full/js/mathjax.js');
+const {TeX} = require(root+'mathjax-full/js/input/tex.js');
+const {SVG} = require(root+'mathjax-full/js/output/svg.js');
+const {liteAdaptor} = require(root+'mathjax-full/js/adaptors/liteAdaptor.js');
+const {RegisterHTMLHandler} = require(root+'mathjax-full/js/handlers/html.js');
+const {AllPackages} = require(root+'mathjax-full/js/input/tex/AllPackages.js');
+const {SerializedMmlVisitor} = require(root+'mathjax-full/js/core/MmlTree/SerializedMmlVisitor.js');
+RegisterHTMLHandler(liteAdaptor());
+const input = new TeX({packages:AllPackages});
+const doc = mathjax.document('',{InputJax:input, OutputJax:new SVG({fontCache:'none'})});
+const visitor = new SerializedMmlVisitor();
+const formulae = JSON.parse(fs.readFileSync('formulae.json','utf8'));
+const result = formulae.map((tex)=>{
+  const item = new doc.options.MathItem(tex,input,false);
+  item.compile(doc);
+  const xml = visitor.visitTree(item.root);
+  if(xml.includes('<merror')) throw Error('Invalid formula: '+tex);
+  return xml;
+});
+fs.writeFileSync('mathml.json',JSON.stringify(result));

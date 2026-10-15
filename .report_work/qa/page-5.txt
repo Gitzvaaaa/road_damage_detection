@@ -1,0 +1,53 @@
+5
+Mini-batch training uses a small batch at each update rather than computing a full-dataset gradient. 
+The basic mini-batch SGD update is:
+𝑔𝑡 = 𝛻𝜃𝐿𝐵𝑡
+(𝜃𝑡), 𝜃𝑡+1 = 𝜃𝑡 − 𝜂𝑡𝑔𝑡
+The learning rate 𝜂𝑡 controls the step size. The project uses shuffled mini-batches and applies Adam 
+to their gradients [12].
+2.3.3. Optimization Algorithms
+Adam uses the mini-batch gradient 𝑔𝑡
+to update each parameter through running moment estimates. 
+All vector products, squares, square roots, and divisions below are elementwise [5].
+𝑚𝑡 = 𝛽1𝑚𝑡−1 + (1 − 𝛽1)𝑔𝑡
+, 𝑚0 = 0
+The first moment 𝑚𝑡 smooths the gradient direction; 𝛽1 controls how much past information is 
+retained.
+𝑣𝑡 = 𝛽2𝑣𝑡−1 + (1 − 𝛽2)𝑔𝑡
+2
+, 𝑣0 = 0
+The second raw moment 𝑣𝑡
+tracks squared gradient magnitudes. It is not a centered variance. The 
+decay factor 𝛽2 controls its memory.
+𝑚̂𝑡 =
+𝑚𝑡
+1 − 𝛽1
+𝑡
+, 𝑣̂𝑡 =
+𝑣𝑡
+1 − 𝛽2
+𝑡
+Bias correction compensates for initializing both moment estimates at zero.
+𝜃𝑡+1 = 𝜃𝑡 − 𝜂𝑡
+𝑚̂𝑡
+√𝑣̂𝑡 + 𝜖
+The corrected first moment determines the update direction, while the denominator adapts its scale 
+for each parameter. The learning rate 𝜂𝑡 sets the overall step size, and 𝜖 > 0 stabilizes division. 
+When an L2 penalty is used, 𝑔𝑡
+includes its gradient [5; 12].
+2.3.4. Overfitting and Regularization
+Overfitting occurs when a model fits the training data more closely than is useful for predicting 
+unseen examples. A widening training–validation performance gap can indicate overfitting. 
+Regularization reduces this risk through constraints on learning or additional variability during 
+training [1, Ch. 7].
+𝐽𝐵(𝜃) = 𝐿𝐵(𝜃) +
+𝜆
+2
+‖𝜃‖2
+2
+An L2 penalty discourages large values of the penalized parameters, contributing 𝜆𝜃 to their 
+gradient. The project passes weight_decay to Adam, implementing this coupled penalty in the 
+current training setup; this should not be confused with the decoupled update used by AdamW [12; 
+14].
+Dropout randomly sets activations to zero during training to reduce reliance on particular units. With 
+drop probability 𝑞, inverted dropout uses:

@@ -1,0 +1,40 @@
+11
+References
+[1] I. Goodfellow, Y. Bengio, and A. Courville, Deep Learning. MIT Press, 2016. Chapters 5–9.
+https://www.deeplearningbook.org/
+[2] A. Zhang, Z. C. Lipton, M. Li, and A. J. Smola, Dive into Deep Learning. Cambridge University Press, 2023. 
+Online edition, Sections 5.3 and 7.2–7.5.
+https://d2l.ai/
+[3] PyTorch contributors, “Conv2d,” PyTorch documentation. Accessed October 10, 2026.
+https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+[4] S. Ioffe and C. Szegedy, “Batch Normalization: Accelerating Deep Network Training by Reducing Internal 
+Covariate Shift,” in Proceedings of the 32nd International Conference on Machine Learning, vol. 37, pp. 448–
+456, 2015. Algorithm 1 and Section 3.2.
+https://proceedings.mlr.press/v37/ioffe15.html
+[5] D. P. Kingma and J. Ba, “Adam: A Method for Stochastic Optimization,” International Conference on 
+Learning Representations, 2015.
+https://arxiv.org/abs/1412.6980
+[6] N. Srivastava, G. Hinton, A. Krizhevsky, I. Sutskever, and R. Salakhutdinov, “Dropout: A Simple Way to 
+Prevent Neural Networks from Overfitting,” Journal of Machine Learning Research, vol. 15, no. 56, pp. 1929–
+1958, 2014.
+https://jmlr.org/papers/v15/srivastava14a.html
+[7] Scikit-learn developers, “Metrics and scoring: quantifying the quality of predictions,” Scikit-learn User 
+Guide. Accessed October 10, 2026.
+https://scikit-learn.org/stable/modules/model_evaluation.html
+[8] Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner, “Gradient-based learning applied to document recognition,” 
+Proceedings of the IEEE, vol. 86, no. 11, pp. 2278–2324, 1998. DOI: 10.1109/5.726791.
+https://bottou.org/papers/lecun-98h
+[9] K. Simonyan and A. Zisserman, “Very Deep Convolutional Networks for Large-Scale Image Recognition,” 
+International Conference on Learning Representations, 2015.
+https://arxiv.org/abs/1409.1556
+[10] K. He, X. Zhang, S. Ren, and J. Sun, “Deep Residual Learning for Image Recognition,” in Proceedings of 
+the IEEE Conference on Computer Vision and Pattern Recognition, pp. 770–778, 2016.
+https://arxiv.org/abs/1512.03385
+[11] Stanford University, “Transfer Learning,” CS231n course notes. Accessed October 10, 2026.
+https://cs231n.github.io/transfer-learning/
+[12] Road damage classification project, local source code and configuration: train.py, evaluate.py, dataset.py, 
+models/complex_cnn.py, and configs/complex_cnn.json. Implementation inspected October 10, 2026.
+[13] PyTorch contributors, “CrossEntropyLoss,” PyTorch documentation. Accessed October 10, 2026.
+https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+[14] PyTorch contributors, “Adam,” PyTorch documentation. Accessed October 10, 2026.
+https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html

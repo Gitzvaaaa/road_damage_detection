@@ -34,14 +34,11 @@ if __name__ == "__main__":
 
     # Nạp trọng số đã train trong saved_models/ vào model
     model.load_state_dict(torch.load(module.SAVE_PATH, map_location="cpu", weights_only=True))
-    backend, device = module.pick_device(module.DEVICE)
-    amp = backend == "cuda" and torch.cuda.get_device_capability()[0] >= 6
-    model = model.to(device)
-    print(f"Device: {device} | AMP: {amp} | Model: {module.SAVE_PATH}", flush=True)
+    print(f"Model: {module.SAVE_PATH}", flush=True)
 
     # Cho model dự đoán toàn bộ tập test
     test_loader = DataLoader(test_data, batch_size=module.BATCH_SIZE)
-    test_loss, test_acc, actual, predicted = model.evaluate(test_loader, device, amp)
+    test_loss, test_acc, actual, predicted = model.evaluate(test_loader)
 
     # In kết quả ra màn hình
     classes = test_data.classes

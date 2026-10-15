@@ -1,0 +1,6 @@
+9
+The project applies online horizontal flipping, small affine transformations, color jitter, occasional 
+perspective distortion, and Gaussian blur before tensor conversion and normalization. Augmentation 
+is restricted to training images. Validation and test images receive only tensor conversion and 
+normalization, using statistics computed from the training set. This preserves a consistent evaluation 
+procedure and avoids using validation or test statistics to prepare the training inputs [12].

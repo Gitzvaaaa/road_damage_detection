@@ -1,0 +1,45 @@
+4
+2.3.2. Backpropagation and Mini-Batch Gradient Descent
+Backpropagation applies the chain rule from the loss toward earlier layers. It computes gradients; 
+the optimizer then uses those gradients to update parameters. For the mean softmax cross-entropy 
+loss above, the gradient with respect to each output logit is:
+𝜕ℒℬ
+𝜕𝑧𝑛,𝑘
+=
+𝑝𝑛,𝑘 − 𝑦𝑛,𝑘
+𝐵
+To illustrate the backward pass of a convolution, consider the cross-correlation in Section 2.2.2 with 
+unit stride, unit dilation, and no padding. Let 𝛿𝑛,𝑜,𝑖,𝑗 = 𝜕ℒℬ/𝜕𝑍𝑛,𝑜,𝑖,𝑗 be the gradient arriving at its pre￾activation output. Applying the chain rule gives:
+𝜕ℒℬ
+𝜕𝐾𝑜,𝑐,𝑢,𝑣
+= ∑ 𝛿𝑛,𝑜,𝑖,𝑗
+𝑛,𝑖,𝑗
+𝑋𝑛,𝑐,𝑖+𝑢,𝑗+𝑣
+,
+𝜕ℒℬ
+𝜕𝑏𝑜
+= ∑ 𝛿𝑛,𝑜,𝑖,𝑗
+𝑛,𝑖,𝑗
+𝜕ℒℬ
+𝜕𝑋𝑛,𝑐,ℎ,𝑤
+= ∑ ∑ ∑ 𝐾𝑜,𝑐,𝑢,𝑣
+𝑜 𝑢 𝑣
+𝛿𝑛,𝑜,ℎ−𝑢,𝑤−𝑣
+The sums cover valid batch, spatial, and kernel indices; in the input-gradient formula, 𝛿 is zero 
+outside its valid output range. The kernel gradient accumulates contributions from every location 
+where the shared weight was used. The input gradient carries the error to earlier layers. These 
+equations specialize the chain rule to the stated convolution; the factor 1⁄𝐵 is already included in 𝛿
+and must not be applied again [1, Sec. 6.5 and Ch. 9; 2, Sec. 5.3].
+For a ReLU applied directly to 𝑍, the local backward rule is:
+𝛿 =
+𝜕ℒℬ
+𝜕𝐴 ⊙ 𝟏[𝑍 > 0], 𝐴 = Re LU(𝑍)
+Here, ⊙ denotes elementwise multiplication. In Conv–BN–ReLU blocks, the gradient must also pass 
+through BN before reaching the convolution. Max pooling routes the gradient to the selected 
+maximum in each window; overlapping windows contribute additively [2, Sec. 5.3; 4].
+Mini-batch training uses a small batch at each update rather than computing a full-dataset gradient. 
+The basic mini-batch SGD update is:
+𝑔𝑡 = 𝛻𝜃ℒℬ𝑡
+(𝜃𝑡), 𝜃𝑡+1 = 𝜃𝑡 − 𝜂𝑡𝑔𝑡
+The learning rate 𝜂𝑡 controls the step size. The project uses shuffled mini-batches and applies Adam 
+to their gradients [12].

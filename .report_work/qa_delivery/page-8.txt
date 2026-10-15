@@ -1,0 +1,41 @@
+8
+2.5.2. VGG
+VGG uses repeated 3 × 3 convolutions with stride 1 and padding that preserves spatial size within 
+each block. ReLU follows the convolutions, while 2 × 2 max pooling with stride 2 reduces resolution 
+between blocks. The number of feature channels increases as spatial resolution decreases. VGG-16 
+has 13 convolutional and three fully connected weight layers; VGG-19 has 16 convolutional and 
+three fully connected weight layers [9].
+Stacking small kernels expands the effective receptive field while introducing additional nonlinear 
+transformations. VGG provides a regular architecture that is straightforward to describe and adapt, 
+although its original fully connected classifier accounts for a large share of its parameters and 
+memory requirements [9].
+2.5.3. ResNet
+ResNet introduces residual blocks to ease the optimization of deep networks. A block learns a 
+residual transformation 𝐹(𝐱; 𝑊) and adds a shortcut from its input [10]:
+𝐲 = 𝐹(𝐱; 𝑊) + 𝐱
+When the spatial dimensions or channel counts differ, a projection 𝑊𝑠
+, commonly implemented by a 
+1 × 1 convolution with a suitable stride, matches the shortcut to the residual output:
+𝐲 = 𝐹(𝐱; 𝑊) + 𝑊𝑠𝐱
+The addition provides a direct path for information and gradients, allowing the block to learn a 
+change to its input representation. ResNet-18 and ResNet-34 use basic blocks with two 3 × 3
+convolutions; deeper variants such as ResNet-50 use bottleneck blocks with 1 × 1, 3 × 3, and 1 × 1
+convolutions. The original networks finish with global average pooling and a fully connected 
+classifier [10].
+2.6. Techniques for Improving CNN Performance
+2.6.1. Transfer Learning
+Transfer learning builds a classifier from a CNN pretrained on a source dataset, such as ImageNet. 
+The pretrained feature extractor is retained, and its original classification layer is replaced by a new 
+head with one output per target class. For this four-class task, the new head therefore has four logits 
+[11].
+In a feature-extraction setup, the backbone weights are frozen and only the new head is trained. For 
+fine-tuning, selected backbone layers or the full backbone are unfrozen and updated, usually with a 
+smaller learning rate than the newly initialized head. Input preprocessing must match the pretrained 
+weights, and the amount of fine-tuning is selected using validation performance. If the backbone is 
+intended to remain fixed, its BN running statistics must also remain fixed [11].
+2.6.2. Data Augmentation
+Data augmentation generates varied training inputs through transformations intended to preserve 
+class identity. Random flips, modest geometric changes, and photometric changes expose the 
+model to variations that may occur in unseen images. Transformations must remain appropriate to 
+the task; for example, large rotations can change the directional meaning of a road crack [1, Sec. 
+7.4].

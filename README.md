@@ -74,9 +74,7 @@ epoch. Whenever the validation accuracy improves, the weights (`state_dict`) are
 `saved_models/<model>.pth`, so the file always holds the best epoch so far. Running a model again
 overwrites its file.
 
-The device is chosen automatically: CUDA, then DirectML, then CPU. To force one, set `DEVICE` at
-the top of the model file to `"cpu"`, `"cuda"` or `"directml"`. DirectML requires
-`torch-directml` in a separate Python environment from CUDA.
+Training and evaluation use CPU by default, without device selection or a fixed random seed.
 
 ## Evaluation
 

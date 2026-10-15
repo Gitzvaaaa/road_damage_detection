@@ -1,0 +1,77 @@
+7
+2.4. Model Evaluation Metrics
+2.4.1. Multiclass Confusion Matrix
+For 𝑀 mutually exclusive classes, the confusion matrix 𝐶 ∈ 𝑁0
+𝑀×𝑀 counts predictions by true class 
+and predicted class. Rows correspond to true labels and columns to predicted labels [7]:
+𝐶𝑖,𝑗 = ∑ 1
+𝑁
+𝑛=1
+[𝑦𝑛 = 𝑖𝑎𝑛𝑑𝑦̂𝑛 = 𝑗]
+Here, 𝑁 is the number of evaluated images. Diagonal entries count correct predictions; off-diagonal 
+entries identify specific confusions. In the project, the fixed order is D00, D10, D20, and D40, giving 
+the following four-class structure [12]:
+𝐶 =
+[
+ 
+ 
+ 
+𝐶1,1 𝐶1,2 𝐶1,3 𝐶1,4
+𝐶2,1 𝐶2,2 𝐶2,3 𝐶2,4
+𝐶3,1 𝐶3,2 𝐶3,3 𝐶3,4
+𝐶4,1 𝐶4,2 𝐶4,3 𝐶4,4]
+ 
+ 
+ 
+For example, 𝐶1,2 counts true D00 images predicted as D10. The sum of row 𝑖 is the support of class 
+𝑖. A row-normalized matrix divides each nonempty row by its support, showing how that true class is 
+distributed across predicted classes. Counts should also be retained so that differences in class 
+frequency remain visible [7].
+2.4.2. Accuracy and Multiclass Precision Recall and F1 Score
+Overall accuracy is the fraction of evaluated images classified correctly:
+Accuracy =
+∑ 𝐶𝑘,𝑘
+𝑀
+𝑘=1
+𝑁
+, 𝑁 =∑ ∑ 𝐶𝑖,𝑗
+𝑀
+𝑗=1
+𝑀
+𝑖=1
+For each class 𝑘, a one-versus-rest view defines its true positives, false positives, false negatives, 
+and support:
+𝑇𝑃𝑘 = 𝐶𝑘,𝑘, 𝐹𝑃𝑘 = ∑ 𝐶𝑖,𝑘
+𝑖≠𝑘
+, 𝐹𝑁𝑘 = ∑ 𝐶𝑘,𝑗
+𝑗≠𝑘
+, 𝑠𝑘 = ∑ 𝐶𝑘,𝑗
+𝑗
+𝑃𝑘 =
+𝑇𝑃𝑘
+𝑇𝑃𝑘 + 𝐹𝑃𝑘
+, 𝑅𝑘 =
+𝑇𝑃𝑘
+𝑇𝑃𝑘 + 𝐹𝑁𝑘
+, 𝐹1,𝑘 =
+2𝑇𝑃𝑘
+2𝑇𝑃𝑘 + 𝐹𝑃𝑘 + 𝐹𝑁𝑘
+Precision measures how often predictions of class 𝑘 are correct. Recall measures how many actual 
+examples of that class are recovered. F1 combines precision and recall through their harmonic 
+mean. If a denominator is zero, the metric requires an explicit convention; the project assigns zero 
+using zero_division=0 [7; 12].
+Macro and support-weighted averages summarize per-class scores. For 𝑄𝑘 ∈ {𝑃𝑘, 𝑅𝑘, 𝐹1,𝑘}:
+𝑄𝑚𝑎𝑐𝑟𝑜 =
+1
+𝑀
+∑ 𝑄𝑘
+𝑀
+𝑘=1
+,𝑄𝑤𝑒𝑖𝑔ℎ𝑡𝑒𝑑 = ∑
+𝑠𝑘
+𝑁
+𝑀
+𝑘=1
+𝑄𝑘
+Macro averaging gives equal weight to every class, while weighted averaging gives more influence 
+to frequent classes. Macro-F1 is the mean of the class F1 scores, not generally the harmonic mean 

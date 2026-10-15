@@ -1,0 +1,61 @@
+2
+weights of shape 16 × 3 × 3 × 3 and produce 16 output channels. With stride 1 and padding 1, the 
+spatial dimensions are preserved [2, Sec. 7.4; 3].
+2.2.3. Activation Functions
+Activation functions introduce nonlinearity into the network. Without nonlinear operations, a 
+sequence of affine layers is equivalent to a single affine transformation. Common elementwise 
+activation functions are [1, Sec. 6.3]:
+Re LU(𝑧) = max(0, 𝑧), 𝜎(𝑧) =
+1
+1 + 𝑒
+−𝑧
+,tanh(𝑧) =
+𝑒
+𝑧 − 𝑒
+−𝑧
+𝑒
+𝑧 + 𝑒
+−𝑧
+ReLU is inexpensive and has derivative 1 for positive inputs and 0 for negative inputs. It avoids 
+saturation on the positive side, although units that remain inactive can receive zero gradients. 
+Sigmoid maps values to (0, 1), and tanh maps them to (−1,1); both can produce small gradients 
+when the magnitude of their input is large. The project uses ReLU in its hidden layers [12].
+2.2.4. Pooling Layer
+Pooling summarizes a spatial neighborhood within each channel. It usually reduces height and width 
+while preserving the number of channels, lowering the size of subsequent feature tensors. For a 
+pooling region 𝑅𝑖,𝑗
+, max pooling and average pooling are defined as [1, Sec. 9.3]:
+𝑃𝑛,𝑐,𝑖,𝑗
+𝑚𝑎𝑥 = max(𝑢,𝑣)∈𝑅𝑖,𝑗
+𝐴𝑛,𝑐,𝑢,𝑣
+𝑃𝑛,𝑐,𝑖,𝑗
+𝑎𝑣𝑔 =
+1
+|𝑅𝑖,𝑗
+|
+∑ 𝐴𝑛,𝑐,𝑢,𝑣
+(𝑢,𝑣)∈𝑅𝑖,𝑗
+Max pooling retains the strongest response in a region, whereas average pooling summarizes all 
+responses in that region. Pooling can reduce sensitivity to small local shifts, but it also discards 
+spatial detail. Global average pooling reduces each entire feature map to one value; adaptive 
+average pooling can instead produce a specified spatial grid [2, Sec. 7.5].
+2.2.5. Fully Connected Layer and Softmax
+After feature extraction, flattening or pooling converts feature maps into a vector 𝑎. A fully connected 
+layer combines these features through an affine transformation. The final layer produces one logit 
+for each of the 𝑀 classes [1, Ch. 6]:
+𝑧 = 𝑊𝑓𝑐𝑎 + 𝑏𝑓𝑐, 𝑝𝑘 =
+exp(𝑧𝑘)
+∑ exp(
+𝑀
+𝑗=1
+𝑧𝑗)
+, 𝑦̂ = argmax𝑘𝑝𝑘
+Softmax converts logits into probabilities that sum to one. It is appropriate here because the classes 
+are mutually exclusive. The project returns logits directly and passes them to PyTorch 
+CrossEntropyLoss, which incorporates log-softmax internally; an explicit softmax layer is 
+unnecessary during training [12; 13].
+2.2.6. Batch Normalization
+Batch normalization (BN) normalizes activations separately for each channel. For 𝑋 ∈ 𝑅
+𝐵×𝐶×𝐻×𝑊, 
+training statistics are computed over the batch and all spatial positions, not across channels [4, 
+Algorithm 1 and Sec. 3.2]:

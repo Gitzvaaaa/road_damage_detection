@@ -1,0 +1,44 @@
+7
+The project uses two controls: min_delta is the minimum required reduction in validation loss, and 
+patience is the number of consecutive epochs allowed without such an improvement. Let 𝛥 denote 
+min_delta, 𝑃 denote patience, 𝑟𝑡−1 be the last accepted reference loss, and 𝑞𝑡 count consecutive 
+non-improving epochs. Its rule is [12]:
+meaningful improvement at epoch𝑡 ⇔ 𝐿val
+(𝑡) < 𝑟𝑡−1 − 𝛥
+(𝑟𝑡
+, 𝑞𝑡) = {
+(𝐿val
+(𝑡)
+, 0), 𝐿val
+(𝑡) < 𝑟𝑡−1 − 𝛥,
+(𝑟𝑡−1, 𝑞𝑡−1 + 1), otherwise.
+Initialize 𝑟0 = +∞ and 𝑞0 = 0 . Training stops when 𝑞𝑡 ≥ 𝑃 and 𝑃 > 0 ; patience 0 disables this 
+stopping rule. The current Complex CNN configuration uses patience 10 and min_delta 0.0001. For 
+example, after accepting loss 0.5000, a new value must be below 0.4999 to reset the counter. 
+Smaller changes are compared against the unchanged reference in subsequent epochs [12].
+Stopping and checkpoint selection are separate. The current configuration saves the highest 
+validation-accuracy checkpoint, using lower validation loss to break ties. Improvements smaller than 
+min_delta can still update that checkpoint. Evaluation explicitly loads the saved checkpoint; early 
+stopping itself does not restore the in-memory model. The learning-rate scheduler also monitors 
+validation loss, but uses its own patience setting [12].
+2.5. Representative CNN Architectures
+2.5.1. LeNet
+LeNet-5 is an early CNN designed for handwritten character recognition. It processes a 32 × 32
+grayscale input through convolution, subsampling, and classification stages. Its C1 layer produces 
+six feature maps, S2 reduces their spatial resolution, C3 produces 16 feature maps, and S4 
+performs further subsampling. C5 combines the remaining spatial features, followed by the F6 layer 
+and the output stage [8].
+The original architecture uses sigmoid-type nonlinearities and trainable subsampling, with a radial￾basis output layer. Modern teaching implementations often replace these details with ReLU, ordinary 
+pooling, and a softmax classifier. LeNet illustrates the central CNN pattern of extracting local 
+features, reducing spatial resolution, and combining the resulting representations for classification 
+[8].
+2.5.2. VGG
+VGG uses repeated 3 × 3 convolutions with stride 1 and padding that preserves spatial size within 
+each block. ReLU follows the convolutions, while 2 × 2 max pooling with stride 2 reduces resolution 
+between blocks. The number of feature channels increases as spatial resolution decreases. VGG-16 
+has 13 convolutional and three fully connected weight layers; VGG-19 has 16 convolutional and 
+three fully connected weight layers [9].
+Stacking small kernels expands the effective receptive field while introducing additional nonlinear 
+transformations. VGG provides a regular architecture that is straightforward to describe and adapt, 
+although its original fully connected classifier accounts for a large share of its parameters and 
+memory requirements [9].
