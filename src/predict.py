@@ -1,6 +1,6 @@
 """Đánh giá model đã train (saved_models/<model>.pth) trên tập test.
 
-Chạy từ thư mục gốc của project, ví dụ: python src/predict.py simple_cnn
+Run: python src/predict.py simple_cnn
 """
 
 import argparse
@@ -17,7 +17,7 @@ if __name__ == "__main__":
     parser.add_argument("model", choices=["simple_cnn", "complex_cnn", "transfer_model"])
     args = parser.parse_args()
 
-    # Load tập test (tiền xử lý y như lúc train, chỉ không có augmentation) và dựng đúng model cần đánh giá
+    # Load tập test (tiền xử lý giống lúc train, nhưng không có augmentation) và dựng model cần đánh giá
     if args.model == "simple_cnn":
         import simple_cnn as module
         test_data = make_dataset("test")
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     else:
         import transfer_model as module
         test_data = make_dataset("test", normalization=module.NORMALIZATION)
-        # pretrained=False vì đằng nào cũng nạp trọng số đã train, không cần tải backbone về nữa
+        # pretrained=False vì sẽ nạp trọng số đã train ở code bên dưới, không cần tải backbone về
         model = module.TransferModel(len(test_data.classes), pretrained=False)
 
     # Nạp trọng số đã train trong saved_models/ vào model

@@ -1,7 +1,7 @@
 """Transfer learning: 10 block đầu của YOLOv8s pretrained trên RDD2022 + classifier mới.
 
 Train 2 giai đoạn: (1) chỉ train classifier, (2) fine-tune thêm 3 block cuối của backbone.
-Chạy từ thư mục gốc của project: python src/transfer_model.py
+Run: python src/transfer_model.py
 Lần chạy đầu tải trọng số pretrained từ Hugging Face nên cần internet.
 """
 
@@ -19,7 +19,7 @@ from ultralytics.nn.tasks import DetectionModel
 from dataset import make_dataset
 
 
-# Hyperparameter, muốn thử cấu hình khác thì sửa trực tiếp ở đây
+# Hyperparameter
 HEAD_EPOCHS = 3        # giai đoạn 1: đóng băng backbone, chỉ train phần classifier
 FINETUNE_EPOCHS = 30   # giai đoạn 2: mở thêm block 7-9 của backbone để train cùng classifier
 BATCH_SIZE = 16
@@ -31,8 +31,7 @@ FINETUNE_HEAD_LEARNING_RATE = 0.0001
 WEIGHT_DECAY = 0.001
 LABEL_SMOOTHING = 0.05
 SEED = 42
-# Để None thì tự chọn thiết bị: có CUDA thì dùng CUDA, không thì DirectML, cuối cùng mới là CPU.
-# Muốn ép dùng một thiết bị cụ thể thì ghi "cpu", "cuda" hoặc "directml".
+# Để None sẽ tự chọn thiết bị: CUDA, DirectML, CPU
 DEVICE = None
 SAVE_PATH = Path(__file__).resolve().parents[1] / "saved_models" / "transfer_model.pth"
 
@@ -161,7 +160,7 @@ def pick_device(requested):
         return requested, torch.device(requested)
     if torch.cuda.is_available():
         return "cuda", torch.device("cuda")
-    # Không có CUDA thì thử DirectML, máy không cài hoặc không dùng được thì quay về CPU
+    # Không có CUDA sẽ thử DirectML, máy không cài hoặc không dùng được sẽ sử dụng CPU
     try:
         import torch_directml
         if torch_directml.is_available():
@@ -190,11 +189,11 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, shuffle=True, **loader_kwargs)
     val_loader = DataLoader(val_data, **loader_kwargs)
 
-    # Khởi tạo model rồi train, cứ có epoch tốt hơn là model được lưu luôn vào SAVE_PATH
+    # Khởi tạo model rồi train, nếu có epoch tốt hơn thì model được lưu vào SAVE_PATH
     model = TransferModel(len(train_data.classes)).to(device)
     SAVE_PATH.parent.mkdir(exist_ok=True)
     best_epoch, val_loss, val_acc = model.fit(train_loader, val_loader, device, backend, amp)
 
-    # In kết quả trên tập validation, còn tập test thì chạy: python src/predict.py transfer_model
+    # In kết quả trên tập validation, tập test sẽ chạy: python src/predict.py transfer_model
     print(f"\nBest epoch: {best_epoch} | val loss {val_loss:.4f}, acc {val_acc:.2%}")
     print(f"Saved best model: {SAVE_PATH}")
