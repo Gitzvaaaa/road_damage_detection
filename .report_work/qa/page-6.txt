@@ -1,9 +1,0 @@
-6
-𝑎̃𝑖 =
-𝑟𝑖𝑎𝑖
-1 − 𝑞
-, 𝑟𝑖 ∼ Bernoulli(1 − 𝑞),0 ≤ 𝑞 < 1
-The scaling preserves the expected activation; dropout is disabled during inference. The project 
-uses channel-wise Dropout2d in convolutional blocks and ordinary dropout in the classifier. Data 
-augmentation and early stopping provide additional regularization, as discussed in Sections 2.6.2 
-and 2.4.3 [6; 12].

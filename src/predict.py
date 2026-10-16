@@ -29,8 +29,8 @@ if __name__ == "__main__":
     else:
         import transfer_model as module
         test_data = make_dataset("test", normalization=module.NORMALIZATION)
-        # pretrained=False vì sẽ nạp trọng số đã train ở code bên dưới, không cần tải backbone về
-        model = module.TransferModel(len(test_data.classes), pretrained=False)
+        # Model dựng từ backbone pretrained, trọng số này sẽ bị thay bằng trọng số đã train ở code bên dưới
+        model = module.TransferModel(len(test_data.classes))
 
     # Nạp trọng số đã train trong saved_models/ vào model
     model.load_state_dict(torch.load(module.SAVE_PATH, map_location="cpu", weights_only=True))

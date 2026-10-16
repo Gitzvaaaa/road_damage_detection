@@ -12,7 +12,6 @@ from huggingface_hub import hf_hub_download
 from torch import nn
 from torch.utils.data import DataLoader
 from ultralytics import YOLO
-from ultralytics.nn.tasks import DetectionModel
 
 from dataset import make_dataset
 
@@ -38,12 +37,10 @@ NORMALIZATION = {"mean": [0.0, 0.0, 0.0], "std": [1.0, 1.0, 1.0]}
 
 
 class TransferModel(nn.Module):
-    def __init__(self, num_classes, pretrained=True, hidden_dim=HIDDEN_DIM, dropout=DROPOUT):
+    def __init__(self, num_classes, hidden_dim=HIDDEN_DIM, dropout=DROPOUT):
         super().__init__()
-        if pretrained:
-            weights = hf_hub_download(REPO_ID, "best.pt", revision=REVISION)
-            base = YOLO(weights).model.cpu().float()
-
+        weights = hf_hub_download(REPO_ID, "best.pt", revision=REVISION)
+        base = YOLO(weights).model.cpu().float()
 
         self.features = nn.Sequential(*list(base.model.children())[:10])
         channels = self.features[-1].cv2.conv.out_channels

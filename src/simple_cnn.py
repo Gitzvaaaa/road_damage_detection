@@ -13,7 +13,7 @@ from dataset import make_dataset
 
 
 # Hyperparameter
-EPOCHS = 10
+EPOCHS = 50
 BATCH_SIZE = 32
 LEARNING_RATE = 0.001
 SAVE_PATH = Path(__file__).resolve().parents[1] / "saved_models" / "simple_cnn.pth"

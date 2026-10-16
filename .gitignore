@@ -3,22 +3,8 @@
 
 # Python
 __pycache__/
-*.py[cod]
 .ipynb_checkpoints/
 
-# Data and training outputs (large files)
+# Data and trained models (large files)
 data/
-runs/
 saved_models/
-*.pt
-*.pth
-*.onnx
-
-# Secrets
-.env
-
-# OS / IDE
-Thumbs.db
-.DS_Store
-.vscode/
-.idea/

@@ -17,17 +17,19 @@ Run every command from the project root. If you use the local `.conda/` environm
 
 ## Data
 
-The processed data is in `data/processed_classification/` and consists of 224×224 crops:
+The processed data is in `data/processed_classification/` and consists of 12,467 crops of
+224×224 pixels:
 
 | Split | Japan | Czech | Total |
 |---|---:|---:|---:|
-| train | 7,725 | 1,002 | 8,727 |
-| val | 1,628 | 214 | 1,842 |
-| test | 1,693 | 215 | 1,908 |
+| train | 7,657 | 1,002 | 8,659 |
+| val | 1,711 | 214 | 1,925 |
+| test | 1,668 | 215 | 1,883 |
 
 The data is created in two steps, which do not need to be rerun for training:
 
-1. `crop_images.ipynb` cuts crops from the images and annotations in `data/<country>/`.
+1. `crop_images.ipynb` cuts crops from the images and annotations in `data/<country>/`. Its
+   second cell then deletes 10 Japan crops whose bounding boxes do not mark road damage.
 2. `prepare_classification.py` splits each country into train/val/test at a 70/15/15 ratio and
    computes the mean/std from the training set. Crops from the same source image stay in the
    same split.
@@ -52,9 +54,9 @@ plus `fit`, `train_one_epoch` and `evaluate`), and the training code under
 
 | Model | Architecture | Training configuration |
 |---|---|---|
-| `simple_cnn` | 3 Conv–ReLU–MaxPool layers, then 2 Linear layers | 10 epochs, batch 32, Adam learning rate 0.001 |
+| `simple_cnn` | 3 Conv–ReLU–MaxPool layers, then 2 Linear layers | 50 epochs, batch 32, Adam learning rate 0.001 |
 | `complex_cnn` | 4 blocks (2 Conv–BatchNorm–ReLU, MaxPool, Dropout), then 2 Linear layers with dropout | Up to 100 epochs, batch 32, Adam learning rate 0.001, weight decay 0.0001; learning rate reduction and early stopping based on validation loss |
-| `transfer_model` | First 10 blocks of YOLOv8s pretrained on RDD2022, plus a new classifier | 3 epochs training only the classifier, then 30 epochs fine-tuning the last 3 backbone blocks as well; batch 16, label smoothing 0.05 |
+| `transfer_model` | First 10 blocks of YOLOv8s pretrained on RDD2022, plus a new classifier | 3 epochs training only the classifier (Adam learning rate 0.001), then 30 epochs fine-tuning the last 3 backbone blocks as well (learning rate 0.00001 for the backbone, 0.0001 for the classifier); batch 16, weight decay 0.001, label smoothing 0.05 |
 
 All three use the same training augmentation (horizontal flip, affine, color jitter,
 perspective, blur) and keep the weights from the epoch with the highest validation accuracy.
@@ -74,7 +76,11 @@ epoch. Whenever the validation accuracy improves, the weights (`state_dict`) are
 `saved_models/<model>.pth`, so the file always holds the best epoch so far. Running a model again
 overwrites its file.
 
-Training and evaluation use CPU by default, without device selection or a fixed random seed.
+Training and evaluation do not fix a random seed,
+so results differ slightly between runs.
+
+Training and evaluating `transfer_model` both load the pretrained weights from Hugging Face. The
+first run downloads them into the Hugging Face cache, so it needs an internet connection.
 
 ## Evaluation
 
@@ -88,13 +94,10 @@ Loads `saved_models/<model>.pth` and prints the test loss and accuracy, per-clas
 recall and F1 with macro and weighted averages, and the confusion matrix. Evaluate on the test set
 only after the model is final.
 
-The first `transfer_model` run downloads the pretrained weights from Hugging Face into the
-Hugging Face cache, so it needs an internet connection.
-
 ## Results
 
-| Model | Validation accuracy | Test accuracy | Test macro-F1 |
-|---|---:|---:|---:|
-| `simple_cnn` | to be updated | to be updated | to be updated |
-| `complex_cnn` | 85.99% | 85.32% | 85.78% |
-| `transfer_model` | to be updated | to be updated | to be updated |
+| Model | Accuracy | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|
+| `simple_cnn` | 76.78% | 78.28% | 77.24% | 77.36% |
+| `complex_cnn` | 85.32% | 86.00% | 85.64% | 85.78% |
+| `transfer_model` | 89.06% | 89.44% | 89.07% | 89.23% |
